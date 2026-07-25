@@ -33,11 +33,27 @@ class Miner(BaseMinerNeuron):
         repo_root = Path(__file__).resolve().parents[1]
         self.model_manifest = build_local_model_manifest(
             repo_root=repo_root,
+            # Every file imported/read by the SERVED runtime path (prediction-critical +
+            # runtime-critical + runtime-loaded observability). model.joblib is attested
+            # separately via artifact_sha256, so it is intentionally NOT listed here.
+            # Offline tools (monitor.py, synapse_report.py, build_feature_profile.py,
+            # benchmark/dataset/validator_sim/experiments) are excluded — forward() never
+            # imports them.
             implementation_files=[
                 Path(__file__).resolve(),                                    # neurons/miner.py
                 repo_root / "poker44" / "miner_model" / "predictor.py",
                 repo_root / "poker44" / "miner_model" / "features.py",
                 repo_root / "poker44" / "miner_model" / "calibration.py",
+                repo_root / "poker44" / "miner_model" / "model_meta.json",
+                repo_root / "poker44" / "miner_model" / "telemetry.py",
+                repo_root / "poker44" / "miner_model" / "synapse_analyzer.py",
+                repo_root / "poker44" / "miner_model" / "synapse_sink.py",
+                repo_root / "poker44" / "miner_model" / "training_feature_profile.json",
+                repo_root / "sn126_research" / "__init__.py",
+                repo_root / "sn126_research" / "features.py",
+                repo_root / "sn126_research" / "features_plus.py",
+                repo_root / "sn126_research" / "features_plus2.py",
+                repo_root / "sn126_research" / "sanitizer.py",
             ],
             defaults={
                 "model_name": "poker44-gbm-35clean",
