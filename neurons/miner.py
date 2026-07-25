@@ -33,29 +33,62 @@ class Miner(BaseMinerNeuron):
         repo_root = Path(__file__).resolve().parents[1]
         self.model_manifest = build_local_model_manifest(
             repo_root=repo_root,
-            implementation_files=[Path(__file__).resolve()],
+            implementation_files=[
+                Path(__file__).resolve(),                                    # neurons/miner.py
+                repo_root / "poker44" / "miner_model" / "predictor.py",
+                repo_root / "poker44" / "miner_model" / "features.py",
+                repo_root / "poker44" / "miner_model" / "calibration.py",
+            ],
             defaults={
-                "model_name": "poker44-reference-heuristic",
-                "model_version": "1",
-                "framework": "python-heuristic",
+                "model_name": "poker44-gbm-35clean",
+                "model_version": "gbm-35clean-v1",
+                "framework": "scikit-learn-histgradientboosting",
                 "license": "MIT",
+                # Set POKER44_MODEL_REPO_URL to your published model repo (a non-reference
+                # repo is required by the compliance policy for a custom model_name).
                 "repo_url": "https://github.com/Poker44/Poker44-subnet",
-                "notes": "Reference heuristic miner shipped with the Poker44 subnet.",
+                "notes": (
+                    "GBM-35clean inference served via poker44.miner_model; batch percentile "
+                    "calibration (p0=0.85). Set POKER44_MODEL_REPO_URL and "
+                    "POKER44_MODEL_REPO_COMMIT to your published model repo and deploy commit."
+                ),
                 "open_source": True,
                 "inference_mode": "remote",
+                # sha256(model.joblib); regenerate if the model artifact is ever re-exported.
+                "artifact_sha256": "b8b7fc78586568e4480ed83a880eb2639001605215a1a6631ed6206c89a9194d",
                 "training_data_statement": (
-                    "Reference heuristic miner. No training step. Uses only runtime chunk features."
+                    "Supervised HistGradientBoosting model trained on the public Poker44 training "
+                    "benchmark (https://api.poker44.net/api/v1/benchmark), projected through "
+                    "prepare_hand_for_miner into the live miner-visible view. 35 behavioral "
+                    "features (feature_version sn126-35clean-v1) with batch percentile calibration "
+                    "(p0=0.85). No validator-only live evaluation data is used in training."
                 ),
-                "training_data_sources": ["none"],
+                "training_data_sources": ["poker44-public-training-benchmark"],
                 "private_data_attestation": (
-                    "This reference miner does not train on validator-only evaluation data."
+                    "This model trains only on the public Poker44 benchmark labels and does not "
+                    "train on validator-only live evaluation data."
                 ),
             },
         )
+        # feature_version is not a native build_local_model_manifest field; attach it
+        # explicitly so the manifest records the exact served feature contract.
+        self.model_manifest["feature_version"] = "sn126-35clean-v1"
         self.manifest_compliance = evaluate_manifest_compliance(self.model_manifest)
         self.manifest_digest = manifest_digest(self.model_manifest)
         self._log_manifest_startup(repo_root)
-        
+
+        # Load the trained GBM inference layer once. If unavailable, the miner
+        # transparently falls back to the reference heuristic (score_chunk).
+        self.predictor = None
+        try:
+            from poker44.miner_model.predictor import Poker44Predictor
+            self.predictor = Poker44Predictor()
+            bt.logging.info(f"Loaded GBM predictor (model_version={self.predictor.model_version}).")
+        except Exception as exc:  # pragma: no cover - deployment/artifact issues
+            bt.logging.warning(
+                f"GBM predictor unavailable ({exc}); falling back to heuristic scoring."
+            )
+
         # # Attach handlers after initialization
         # self.axon.attach(
         #     forward_fn = self.forward,
@@ -91,12 +124,15 @@ class Miner(BaseMinerNeuron):
     async def forward(self, synapse: DetectionSynapse) -> DetectionSynapse:
         """Assign one deterministic bot-risk score per chunk."""
         chunks = synapse.chunks or []
-        scores = [self.score_chunk(chunk) for chunk in chunks]
+        if self.predictor is not None:
+            scores = self.predictor.predict(chunks, fallback=self.score_chunk)
+        else:
+            scores = [self.score_chunk(chunk) for chunk in chunks]
         synapse.risk_scores = scores
         synapse.predictions = [s >= 0.5 for s in scores]
         synapse.model_manifest = dict(self.model_manifest)
         bt.logging.info(f"Miner Predctions: {synapse.predictions}")
-        bt.logging.info(f"Scored {len(chunks)} chunks with heuristic risks.")
+        bt.logging.info(f"Scored {len(chunks)} chunks.")
         return synapse
 
     @staticmethod

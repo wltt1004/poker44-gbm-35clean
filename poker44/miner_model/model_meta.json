@@ -1,0 +1,73 @@
+{
+  "model_version": "gbm-35clean-v1",
+  "feature_version": "sn126-35clean-v1",
+  "feature_count": 35,
+  "feature_names": [
+    "fold_rate",
+    "check_rate",
+    "call_rate",
+    "bet_rate",
+    "raise_rate",
+    "aggression_ratio",
+    "aggression_freq",
+    "preflop_action_rate",
+    "postflop_action_rate",
+    "preflop_aggression_freq",
+    "postflop_aggression_freq",
+    "street_depth_mean",
+    "street_depth_std",
+    "reach_flop_rate",
+    "reach_turn_rate",
+    "reach_river_rate",
+    "vpip",
+    "pfr",
+    "action_entropy",
+    "perhand_entropy_mean",
+    "action_dist_dispersion",
+    "aggression_dispersion",
+    "bet_bucket_mean",
+    "bet_bucket_std",
+    "bet_small_frac",
+    "bet_mid_frac",
+    "bet_large_frac",
+    "bet_to_pot_mean",
+    "bet_overbet_frac",
+    "hero_presence_rate",
+    "betsize_street_std_mean",
+    "action_bigram_entropy",
+    "pot_escalation_mean",
+    "mean_aggressors_per_hand",
+    "potodds_call_fold_gap"
+  ],
+  "model": {
+    "type": "HistGradientBoostingClassifier",
+    "params": {
+      "max_depth": 3,
+      "learning_rate": 0.08,
+      "max_iter": 300,
+      "l2_regularization": 1.0,
+      "random_state": 0
+    },
+    "sklearn_version": "1.7.2",
+    "n_features_in": 35
+  },
+  "calibration": {
+    "method": "batch_percentile_anchor",
+    "p0": 0.85,
+    "min_calib_batch": 8,
+    "global_anchor_raw": 0.9783885448497796
+  },
+  "training": {
+    "n_samples": 1222,
+    "dates": [
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+      "2026-07-23",
+      "2026-07-24"
+    ]
+  }
+}
