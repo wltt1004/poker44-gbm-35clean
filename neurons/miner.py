@@ -89,6 +89,25 @@ class Miner(BaseMinerNeuron):
                 f"GBM predictor unavailable ({exc}); falling back to heuristic scoring."
             )
 
+        # Low-overhead, failure-isolated telemetry (metadata + aggregate stats only).
+        self.telemetry = None
+        try:
+            from poker44.miner_model.telemetry import MinerTelemetry
+            self.telemetry = MinerTelemetry()
+        except Exception as exc:  # pragma: no cover
+            bt.logging.warning(f"Telemetry unavailable ({exc}); continuing without it.")
+
+        # Read-only Synapse Intelligence layer (analyzer + non-blocking sink).
+        self.synapse_analyzer = None
+        self.synapse_sink = None
+        try:
+            from poker44.miner_model.synapse_analyzer import SynapseAnalyzer
+            from poker44.miner_model.synapse_sink import AnalyzerSink
+            self.synapse_analyzer = SynapseAnalyzer()
+            self.synapse_sink = AnalyzerSink()
+        except Exception as exc:  # pragma: no cover
+            bt.logging.warning(f"Synapse analyzer unavailable ({exc}); continuing without it.")
+
         # # Attach handlers after initialization
         # self.axon.attach(
         #     forward_fn = self.forward,
@@ -124,16 +143,65 @@ class Miner(BaseMinerNeuron):
     async def forward(self, synapse: DetectionSynapse) -> DetectionSynapse:
         """Assign one deterministic bot-risk score per chunk."""
         chunks = synapse.chunks or []
+        diagnostics = None
         if self.predictor is not None:
-            scores = self.predictor.predict(chunks, fallback=self.score_chunk)
+            diagnostics = self.predictor.predict_detailed(chunks, fallback=self.score_chunk)
+            scores = list(diagnostics.final_scores)
         else:
             scores = [self.score_chunk(chunk) for chunk in chunks]
         synapse.risk_scores = scores
         synapse.predictions = [s >= 0.5 for s in scores]
         synapse.model_manifest = dict(self.model_manifest)
+        self._emit_intelligence(synapse, chunks, scores, diagnostics)
         bt.logging.info(f"Miner Predctions: {synapse.predictions}")
         bt.logging.info(f"Scored {len(chunks)} chunks.")
         return synapse
+
+    def _emit_intelligence(self, synapse, chunks, scores, diagnostics) -> None:
+        """Request-scoped telemetry + synapse analyzer. Never affects inference."""
+        try:
+            caller = getattr(getattr(synapse, "dendrite", None), "hotkey", None)
+            # privacy-safe one-way fingerprints of the ALREADY-sanitized chunks.
+            req_fp, chunk_fps = None, None
+            try:
+                import hashlib as _hl
+                from poker44.validator.integrity import chunk_fingerprint
+                chunk_fps = [chunk_fingerprint(c) for c in chunks]
+                req_fp = _hl.sha256("|".join(chunk_fps).encode("utf-8")).hexdigest()
+            except Exception:
+                req_fp, chunk_fps = None, None
+            hand_counts = [len(c) for c in chunks]
+            raw_scores = diagnostics.raw_scores if diagnostics is not None else None
+            fallback_used = bool(diagnostics.fallback_used) if diagnostics is not None else True
+            exc_type = diagnostics.exception_type if diagnostics is not None else None
+            duration_s = (diagnostics.total_duration_ms / 1000.0) if diagnostics is not None else None
+
+            # (a) compact telemetry (feeds the ops monitor); request-scoped, no shared attrs
+            telemetry = getattr(self, "telemetry", None)
+            if telemetry is not None:
+                telemetry.log_inference(
+                    chunk_count=len(chunks), hand_counts=hand_counts,
+                    raw_scores=raw_scores, calibrated_scores=scores, duration_s=duration_s,
+                    fallback_used=fallback_used, caller_hotkey=caller,
+                    model_version=self.model_manifest.get("model_version"),
+                    feature_version=self.model_manifest.get("feature_version"),
+                    manifest_digest=getattr(self, "manifest_digest", None),
+                    exception_type=exc_type, request_fingerprint=req_fp, chunk_fingerprints=chunk_fps,
+                )
+            # (b) rich synapse analyzer -> non-blocking bounded sink
+            analyzer = getattr(self, "synapse_analyzer", None)
+            sink = getattr(self, "synapse_sink", None)
+            if analyzer is not None and sink is not None and diagnostics is not None:
+                record = analyzer.analyze(
+                    diagnostics, hand_counts=hand_counts, caller_hotkey=caller,
+                    manifest_digest=getattr(self, "manifest_digest", None),
+                    model_version=self.model_manifest.get("model_version"),
+                    feature_version=self.model_manifest.get("feature_version"),
+                    request_fingerprint=req_fp, chunk_fingerprints=chunk_fps,
+                )
+                sink.submit(record)
+        except Exception:  # pragma: no cover - intelligence must never break inference
+            return
 
     @staticmethod
     def _clamp01(value: float) -> float:
