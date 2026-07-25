@@ -82,41 +82,83 @@ absolute anchor `global_anchor_raw` learned at train time (the p85 raw-score
 quantile of the training set). Rank-invariant: AP and recall@FPR are unchanged;
 only the 0.5 gate moves.
 
+## Class-label mapping
+
+One benchmark *group* (one player's hands) is one sample; the label is
+`groundTruth[i]` for group `i`: **1 = bot, 0 = human**. Rows are assembled in a
+pinned order (sorted release dates → per-date manifest record order → group
+order within each record), declared in `config/model/gbm35clean_v1.json`.
+
 ## Reproducing the model
 
+The exact recipe is pinned in [`config/model/gbm35clean_v1.json`](../config/model/gbm35clean_v1.json)
+(release dates, parameters, calibration, row ordering, frozen artifact hash).
 With this repository installed (`pip install -e .`, scikit-learn 1.7.2):
 
-```python
-import json, joblib, numpy as np
-from sklearn.ensemble import HistGradientBoostingClassifier
-from poker44.miner_model.build_feature_profile import _iter_records, _recent_source_dates, to_live_group
-from poker44.miner_model.features import PROD_FEATURE_ORDER, chunk_feature_vector
+```bash
+python scripts/model/reproduce_gbm35.py \
+    --output /tmp/poker44-reproduction \
+    --cache  /tmp/poker44-benchmark-cache
 
-X, y = [], []
-for date in sorted(_recent_source_dates(8)):
-    for rec in _iter_records(date, max_records=200):
-        groups, truth = rec.get("chunks") or [], rec.get("groundTruth") or []
-        for gi, group in enumerate(groups):
-            live = to_live_group(group)
-            if gi < len(truth) and live:
-                X.append(chunk_feature_vector(live)); y.append(int(truth[gi]))
-X, y = np.asarray(X, float), np.asarray(y, int)
-model = HistGradientBoostingClassifier(max_depth=3, learning_rate=0.08, max_iter=300,
-                                       l2_regularization=1.0, random_state=0).fit(X, y)
-anchor = float(np.quantile(model.predict_proba(X)[:, 1], 0.85))
-joblib.dump(model, "model_reproduced.joblib")
+python scripts/model/verify_reproduction.py \
+    --reproduction /tmp/poker44-reproduction
 ```
 
-`python -m poker44.miner_model.smoke_test` then proves the served pipeline
-(feature contract, calibration paths, fallback safety) end to end.
+`reproduce_gbm35.py` downloads (or reuses from `--cache`) the declared public
+releases, checksums every record, extracts the frozen 35 features through the
+production code, trains with the exact parameters, and emits the training
+config, release manifest, feature order, artifact + SHA256, golden float-hex
+prediction fixtures and a reproducibility report — all into `--output`, never
+touching the served `model.joblib`. `verify_reproduction.py` then checks,
+strictest first: exact binary hash match, else strict trained-state
+equivalence (identical parameters, feature order, release manifest, sample
+count, bit-for-bit `global_anchor_raw`, and bit-for-bit identical predictions
+from both models on real benchmark chunks and a synthetic grid).
+
+**Verified result on the pinned data snapshot: `STRICT_EQUIVALENCE` (12/12
+checks)** — the reproduced model's predictions are bit-for-bit identical to
+production. The *binary* artifact hash differs for two measured, documented
+reasons: (1) `HistGradientBoostingClassifier` pickles `_bin_mapper.n_threads`,
+a fit-time environment recording (e.g. 12 vs 1) with no effect on predictions;
+(2) joblib serialization in this environment is not round-trip byte-stable even
+for an identical object. Byte-identity of `model.joblib` is therefore not a
+meaningful reproduction target; the served artifact is pinned by its SHA256
+and the trained *state* is what reproduction verifies.
+
+`python -m poker44.miner_model.smoke_test` additionally proves the served
+pipeline (feature contract, calibration paths, fallback safety) end to end.
+
+## Implementation attestation
+
+The manifest published at miner startup attests every served runtime file with
+`implementation_sha256` under the versioned scheme
+**`repo-relative-path-and-content-v1`** (`implementation_sha256_scheme` field):
+files are hashed as sorted repo-relative POSIX paths + content lengths + exact
+bytes, so the digest is identical for identical source trees under any
+checkout directory or OS path style. `model.joblib` is attested separately via
+`artifact_sha256`.
+
+## Runtime environment
+
+Expected dependencies: `bittensor`, `numpy`, `scikit-learn==1.7.2`, `joblib`
+(see `requirements.txt`). The production launch script pins
+`OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `MKL_NUM_THREADS=1`,
+`NUMEXPR_NUM_THREADS=1` before Python starts (operator-overridable): on a
+12-core host, default OpenMP threading made the per-request GBM predict ~875×
+slower (≈2900 ms vs 3.3 ms per 100-chunk batch) with bit-for-bit identical
+scores. The miner logs the effective limits at startup.
 
 ## Limitations
 
 - The public benchmark is a rolling window: past release dates may cycle out of
-  the API, so byte-identical artifact reproduction requires the same data
-  snapshot (the served artifact is pinned by its SHA256 instead).
-- Bit-identical GBM training additionally requires the same scikit-learn
-  (1.7.2), NumPy and platform.
+  the API. `reproduce_gbm35.py` reports `BLOCKED_MISSING_RELEASES` when a
+  declared date is neither cached nor served, rather than silently training on
+  different data.
+- Binary artifact reproduction is not byte-deterministic (reasons documented
+  above); strict trained-state equivalence is the verified guarantee.
+- Distribution shift: bot families rotate per release, so offline metrics on
+  past releases bound, but do not guarantee, live performance.
 - Live validator evaluation uses labels that are never published; no claim of
   full live reproducibility is made. Offline evaluation on public benchmark
-  releases (walk-forward by date) is the honest proxy used for selection.
+  releases (walk-forward by date) is the honest proxy used for selection, and
+  no validator-only or private data enters training.

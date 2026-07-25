@@ -30,6 +30,13 @@ class Miner(BaseMinerNeuron):
     def __init__(self, config=None):
         super(Miner, self).__init__(config=config)
         bt.logging.info("🤖 Heuristic Poker44 Miner started")
+        import os as _os
+        bt.logging.info(
+            "Effective thread limits | "
+            + " ".join(f"{v}={_os.environ.get(v, 'unset')}" for v in (
+                "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"))
+        )
         repo_root = Path(__file__).resolve().parents[1]
         self.model_manifest = build_local_model_manifest(
             repo_root=repo_root,

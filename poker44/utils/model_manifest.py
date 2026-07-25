@@ -22,6 +22,13 @@ REFERENCE_MINER_MODEL_NAME = "poker44-reference-heuristic"
 REFERENCE_REPO_URL = "https://github.com/Poker44/Poker44-subnet"
 GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
+# Versioned implementation-hash scheme. v1 hashes, per file, the repo-relative
+# POSIX path + content length + exact bytes (sorted by that relative path), so
+# identical source trees hash identically under any checkout directory,
+# operating system path separator, or current working directory.
+IMPLEMENTATION_SHA256_SCHEME = "repo-relative-path-and-content-v1"
+_SCHEME_DOMAIN = b"poker44-implementation-sha256/repo-relative-path-and-content-v1\x00"
+
 
 def _parse_bool(value: str | None, *, default: bool = False) -> bool:
     if value is None:
@@ -29,11 +36,48 @@ def _parse_bool(value: str | None, *, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def _sha256_for_files(paths: Iterable[Path]) -> str:
+def _repo_relative_files(paths: Iterable[Path | str], *, repo_root: Path) -> Dict[str, Path]:
+    """Map repo-relative POSIX path -> resolved file, validating every entry.
+
+    Rejects missing files and files outside repo_root. Accepts absolute or
+    repo-relative inputs and normalizes Windows-style separators so simulated
+    cross-OS callers produce identical keys.
+    """
+    root = Path(repo_root).resolve()
+    rel_map: Dict[str, Path] = {}
+    for raw in paths:
+        text = str(raw).replace("\\", "/")
+        path = Path(text)
+        resolved = (path if path.is_absolute() else root / path).resolve()
+        if not resolved.is_file():
+            raise FileNotFoundError(f"implementation file missing: {raw}")
+        try:
+            rel = resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                f"implementation file outside repo_root ({root}): {raw}"
+            ) from exc
+        rel_map[rel.as_posix()] = resolved
+    return rel_map
+
+
+def _sha256_for_files(paths: Iterable[Path | str], *, repo_root: Path) -> str:
+    """Portable implementation hash (IMPLEMENTATION_SHA256_SCHEME).
+
+    Hashes a domain prefix, then for every file (sorted by repo-relative POSIX
+    path): ``file\\0<relative-path>\\0<content-length>\\0`` + exact bytes.
+    Absolute filesystem paths never enter the digest, so identical trees hash
+    identically under /home/... and /root/... checkouts; renames, relative-path
+    moves and single-byte edits all change the hash.
+    """
+    rel_map = _repo_relative_files(paths, repo_root=repo_root)
     digest = hashlib.sha256()
-    for path in sorted((p.resolve() for p in paths), key=lambda p: str(p)):
-        digest.update(str(path).encode("utf-8"))
-        with path.open("rb") as handle:
+    digest.update(_SCHEME_DOMAIN)
+    for rel in sorted(rel_map):
+        resolved = rel_map[rel]
+        size = resolved.stat().st_size
+        digest.update(f"file\x00{rel}\x00{size}\x00".encode("utf-8"))
+        with resolved.open("rb") as handle:
             while True:
                 chunk = handle.read(1024 * 1024)
                 if not chunk:
@@ -49,8 +93,8 @@ def build_local_model_manifest(
     defaults: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build a serializable manifest for the miner's current implementation."""
-    implementation_paths = [path.resolve() for path in implementation_files]
-    implementation_sha256 = _sha256_for_files(implementation_paths)
+    rel_map = _repo_relative_files(implementation_files, repo_root=repo_root)
+    implementation_sha256 = _sha256_for_files(implementation_files, repo_root=repo_root)
     default_values = dict(defaults or {})
 
     manifest: Dict[str, Any] = {
@@ -116,10 +160,8 @@ def build_local_model_manifest(
             str(default_values.get("inference_mode", "remote")),
         ).strip(),
         "implementation_sha256": implementation_sha256,
-        "implementation_files": [
-            str(path.relative_to(repo_root)) if path.is_relative_to(repo_root) else str(path)
-            for path in implementation_paths
-        ],
+        "implementation_sha256_scheme": IMPLEMENTATION_SHA256_SCHEME,
+        "implementation_files": sorted(rel_map),
         "notes": os.getenv(
             "POKER44_MODEL_NOTES",
             str(default_values.get("notes", "")),

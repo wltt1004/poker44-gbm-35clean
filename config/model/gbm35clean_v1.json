@@ -1,0 +1,42 @@
+{
+  "model_version": "gbm-35clean-v1",
+  "feature_version": "sn126-35clean-v1",
+  "artifact_sha256": "b8b7fc78586568e4480ed83a880eb2639001605215a1a6631ed6206c89a9194d",
+  "benchmark_api": "https://api.poker44.net/api/v1/benchmark",
+  "training_release_dates": [
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24"
+  ],
+  "max_records_per_date": 200,
+  "expected_n_samples": 1222,
+  "model": {
+    "type": "HistGradientBoostingClassifier",
+    "params": {
+      "max_depth": 3,
+      "learning_rate": 0.08,
+      "max_iter": 300,
+      "l2_regularization": 1.0,
+      "random_state": 0
+    },
+    "sklearn_version": "1.7.2"
+  },
+  "calibration": {
+    "method": "batch_percentile_anchor",
+    "p0": 0.85,
+    "min_calib_batch": 8,
+    "anchor_quantile": 0.85
+  },
+  "label_mapping": {
+    "bot": 1,
+    "human": 0,
+    "source": "benchmark record groundTruth[i] for group i (1 = bot)"
+  },
+  "row_ordering": "sorted release dates; records in per-date manifest order; groups in record order",
+  "notes": "Exact recipe of the served artifact. Reproduction never overwrites poker44/miner_model/model.joblib."
+}

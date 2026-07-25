@@ -2,6 +2,15 @@
 
 # Poker44 Miner Startup Script
 
+# Pin BLAS/OpenMP thread pools BEFORE Python/sklearn start. Small per-request
+# batches are ~875x faster single-threaded than with default oversubscribed
+# threading (measured: 3.3ms vs ~2900ms per 100-chunk GBM predict on 12 cores).
+# Predictions are identical; operators may override deliberately.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
+export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
+
 NETUID="${NETUID:-126}"
 WALLET_NAME="${WALLET_NAME:-poker44-miner-ck}"
 HOTKEY="${HOTKEY:-poker44-miner-hk}"
@@ -21,7 +30,7 @@ if ! command -v pm2 &> /dev/null; then
     exit 1
 fi
 
-pm2 delete $PM2_NAME 2>/dev/null || true
+pm2 delete "$PM2_NAME" 2>/dev/null || true
 
 export PYTHONPATH="$(pwd)"
 
@@ -41,13 +50,14 @@ else
   MINER_ARGS+=(--blacklist.force_validator_permit)
 fi
 
-pm2 start $MINER_SCRIPT \
-  --name $PM2_NAME -- \
+pm2 start "$MINER_SCRIPT" \
+  --name "$PM2_NAME" -- \
   "${MINER_ARGS[@]}"
 
 pm2 save
 
 echo "Miner started: $PM2_NAME"
+echo "Thread limits: OMP=$OMP_NUM_THREADS OPENBLAS=$OPENBLAS_NUM_THREADS MKL=$MKL_NUM_THREADS NUMEXPR=$NUMEXPR_NUM_THREADS"
 echo "View logs: pm2 logs $PM2_NAME"
 echo "Config: netuid=$NETUID network=$NETWORK wallet=$WALLET_NAME hotkey=$HOTKEY axon_port=$AXON_PORT"
 if [ -n "$ALLOWED_VALIDATOR_HOTKEYS" ]; then
