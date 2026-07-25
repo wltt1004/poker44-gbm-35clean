@@ -1,3 +1,5 @@
+# Vendored verbatim from sn126_research/features_plus2.py @ 10c039b
+# (no import changes; all function bodies byte-identical).
 """Conditional / determinism interaction features (research; not yet in miner).
 
 Motivation: the current features.py (30) and features_plus.py (17) are marginal

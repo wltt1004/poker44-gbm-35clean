@@ -7,12 +7,13 @@ Pipeline (per validator request):
         -> _assemble()           # 35 features in the frozen training order
         -> feature vector
 
-We deliberately reuse the exact research implementations so production features
-are bit-for-bit identical to what the GBM was trained on:
+The feature implementations are production-owned, vendored VERBATIM (at commit
+10c039b) from the validated research modules into feature_core/, so production
+features stay bit-for-bit identical to what the GBM was trained on:
 
-  * dedupe_padding  -- from sn126_research.sanitizer   (same logic as training)
-  * base 30         -- sn126_research.features.extract_features(scope="all")
-  * +5 additions    -- sn126_research.features_plus / features_plus2
+  * dedupe_padding  -- feature_core.sanitizer_core   (same logic as training)
+  * base 30         -- feature_core.base30.extract_features(scope="all")
+  * +5 additions    -- feature_core.plus / feature_core.plus2
 
 We do NOT call prepare_hand_for_miner here: the validator has already applied it
 (poker44/validator/forward.py:121). Re-applying it would re-alias seats and
@@ -23,10 +24,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from sn126_research.features import FEATURE_NAMES, extract_features
-from sn126_research.features_plus import extract_interaction_features as _p1_extract
-from sn126_research.features_plus2 import extract as _p2_extract
-from sn126_research.sanitizer import dedupe_padding
+from .feature_core.base30 import FEATURE_NAMES, extract_features
+from .feature_core.plus import extract_interaction_features as _p1_extract
+from .feature_core.plus2 import extract as _p2_extract
+from .feature_core.sanitizer_core import dedupe_padding
 
 # Frozen 35-feature order = base-30 (FEATURE_NAMES) + the 5 validated additions.
 # This MUST match the column order model.joblib is trained on. Persist it in

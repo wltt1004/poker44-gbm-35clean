@@ -16,8 +16,13 @@ from poker44.miner_model.features import (
     chunk_feature_vector,
     dedupe_chunk,
 )
+from poker44.miner_model.feature_core.sanitizer_core import dedupe_padding
 from poker44.validator.payload_view import prepare_hand_for_miner
-from sn126_research.sanitizer import dedupe_padding, to_live_group
+
+
+def to_live_group(group):
+    """Research-equivalent projection (prepare_hand_for_miner + dedupe per hand)."""
+    return [dedupe_padding(prepare_hand_for_miner(h)) for h in group]
 
 
 def _raw_single_action_hand():

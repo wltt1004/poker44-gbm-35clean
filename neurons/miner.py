@@ -49,11 +49,14 @@ class Miner(BaseMinerNeuron):
                 repo_root / "poker44" / "miner_model" / "synapse_analyzer.py",
                 repo_root / "poker44" / "miner_model" / "synapse_sink.py",
                 repo_root / "poker44" / "miner_model" / "training_feature_profile.json",
-                repo_root / "sn126_research" / "__init__.py",
-                repo_root / "sn126_research" / "features.py",
-                repo_root / "sn126_research" / "features_plus.py",
-                repo_root / "sn126_research" / "features_plus2.py",
-                repo_root / "sn126_research" / "sanitizer.py",
+                repo_root / "poker44" / "miner_model" / "feature_core" / "__init__.py",
+                repo_root / "poker44" / "miner_model" / "feature_core" / "sanitizer_core.py",
+                repo_root / "poker44" / "miner_model" / "feature_core" / "base30.py",
+                repo_root / "poker44" / "miner_model" / "feature_core" / "plus.py",
+                repo_root / "poker44" / "miner_model" / "feature_core" / "plus2.py",
+                # feature_core.sanitizer_core imports the bet-bucket ladder from the
+                # official sanitizer, so its content determines served feature values.
+                repo_root / "poker44" / "validator" / "payload_view.py",
             ],
             defaults={
                 "model_name": "poker44-gbm-35clean",

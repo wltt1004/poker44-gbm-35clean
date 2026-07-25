@@ -1,3 +1,5 @@
+# Vendored verbatim from sn126_research/features_plus.py @ 10c039b (only the
+# VISIBLE_BB_BUCKETS import path changed; all function bodies byte-identical).
 """Candidate ALL-TABLE INTERACTION features (research; not yet in the miner).
 
 The current 30 features (features.py) are first-order marginal aggregates. They
@@ -22,7 +24,7 @@ import math
 from collections import Counter, OrderedDict
 from typing import Any, Dict, List, Tuple
 
-from .sanitizer import VISIBLE_BB_BUCKETS
+from .sanitizer_core import VISIBLE_BB_BUCKETS
 
 _AGGR = {"bet", "raise"}
 _VISIBLE_BB = 0.02

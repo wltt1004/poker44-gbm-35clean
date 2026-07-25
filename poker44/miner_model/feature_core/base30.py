@@ -1,3 +1,5 @@
+# Vendored verbatim from sn126_research/features.py @ 10c039b (only the
+# VISIBLE_BB_BUCKETS import path changed; all function bodies byte-identical).
 """Sanitizer-robust chunk features.
 
 EMPIRICAL CORRECTION (see experiments/diagnostic_ceiling.py):
@@ -25,7 +27,7 @@ import math
 from collections import OrderedDict
 from typing import Any, Dict, List, Sequence, Tuple
 
-from .sanitizer import VISIBLE_BB_BUCKETS
+from .sanitizer_core import VISIBLE_BB_BUCKETS
 
 _ACTION_TYPES = ("fold", "check", "call", "bet", "raise")
 _AGGRESSIVE = {"bet", "raise"}
