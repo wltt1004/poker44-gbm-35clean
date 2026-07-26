@@ -238,7 +238,41 @@ def check_config(cls, config: "bt.Config"):
     #     bt.logging.register_primary_logger(events_logger.name)
 
 
+class _AttrDict(dict):
+    """Attribute-accessible dict; missing keys return None (matches bittensor's
+    nested-config access semantics)."""
+
+    __getattr__ = dict.get
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
+
+def _backfill_nested_groups(cfg: "bt.Config", parser: argparse.ArgumentParser) -> None:
+    """bittensor>=10.5 bt.Config does not build nested namespaces for store_true-only
+    argument groups (e.g. blacklist/wandb/neuron), leaving cfg.<group> = None. Rebuild
+    only those missing groups from the parser (respecting CLI overrides such as
+    --no-blacklist.force_validator_permit) so cfg.<group>.<key> resolves.
+
+    Config plumbing only: never touches model/feature/calibration logic or values.
+    """
+    import sys
+    from collections import defaultdict
+
+    parsed, _ = parser.parse_known_args(sys.argv[1:])
+    groups: dict = defaultdict(dict)
+    for dest, value in vars(parsed).items():
+        if "." in dest:
+            group, _, key = dest.partition(".")
+            groups[group][key] = value
+    for group, values in groups.items():
+        if getattr(cfg, group, None) is None:   # only fill what bittensor left empty
+            setattr(cfg, group, _AttrDict(values))
+
+
 def config(cls) -> bt.Config:
     parser = argparse.ArgumentParser()
     cls.add_args(parser)
-    return bt.Config(parser=parser)
+    cfg = bt.Config(parser=parser)
+    _backfill_nested_groups(cfg, parser)
+    return cfg
