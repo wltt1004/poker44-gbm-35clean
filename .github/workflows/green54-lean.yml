@@ -18,11 +18,11 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Check out exact Formal Conjectures revision
+      - name: Unpack exact Formal Conjectures revision
         run: |
-          mkdir -p .deps
-          git clone https://github.com/google-deepmind/formal-conjectures.git .deps/formal-conjectures
-          git -C .deps/formal-conjectures checkout 379fc0298dc146df549e7061c3ede0353a5bb51f
+          mkdir -p .deps/formal-conjectures
+          curl -L --fail https://codeload.github.com/google-deepmind/formal-conjectures/tar.gz/379fc0298dc146df549e7061c3ede0353a5bb51f \
+            | tar -xz --strip-components=1 -C .deps/formal-conjectures
       - name: Resolve dependencies
         run: lake update
       - name: Download Mathlib cache
