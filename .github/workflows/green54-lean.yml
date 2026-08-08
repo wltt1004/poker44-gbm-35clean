@@ -15,6 +15,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Restore Lean caches
+        id: lean-cache
         uses: actions/cache@v4
         with:
           path: |
@@ -36,6 +37,7 @@ jobs:
       - name: Resolve dependencies
         run: lake update
       - name: Download Mathlib cache
+        if: steps.lean-cache.outputs.cache-hit != 'true'
         run: lake exe cache get
       - name: Build Green54Check
         continue-on-error: true
