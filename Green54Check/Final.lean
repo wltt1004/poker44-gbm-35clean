@@ -25,8 +25,10 @@ theorem green54_counterexample :
     norm_num
   have h99 : (0.99 : ℝ≥0∞) < γ U := by
     rw [measure_U]
-    change (99 / 100 : ℝ≥0∞) < 1
-    norm_num
+    rw [show (0.99 : ℝ≥0∞) = ((0.99 : ℝ≥0) : ℝ≥0∞) from rfl]
+    exact_mod_cast (show (0.99 : ℝ≥0) < 1 by
+      change ((0.99 : ℝ≥0) : ℝ) < 1
+      norm_num)
   obtain ⟨B, hBU, hBcompact, hBmeasure⟩ :=
     measurableSet_U.exists_lt_isCompact_of_ne_top hUtop h99
   let K : Set Ω := scalarHull B
@@ -55,8 +57,10 @@ theorem green54_counterexample :
     rw [measure_singleton_zero] at hm
     have hm0 : γ C = 0 := bot_unique hm
     have hpos : (0 : ℝ≥0∞) < (1e-2 : ℝ≥0∞) := by
-      change (0 : ℝ≥0∞) < 1 / 100
-      positivity
+      rw [show (1e-2 : ℝ≥0∞) = ((1e-2 : ℝ≥0) : ℝ≥0∞) from rfl]
+      exact_mod_cast (show (0 : ℝ≥0) < (1e-2 : ℝ≥0) by
+        change (0 : ℝ) < ((1e-2 : ℝ≥0) : ℝ)
+        norm_num)
     have hpositiveC : (0 : ℝ≥0∞) < γ C := hpos.trans_le hCmeasure
     rw [hm0] at hpositiveC
     exact (lt_irrefl 0 hpositiveC)
@@ -81,9 +85,15 @@ theorem green54_counterexample :
   have hbad : (1e-2 : ℝ≥0∞) ≤ (1 / 128 : ℝ≥0∞) :=
     hCmeasure.trans hbound
   have hlt : (1 / 128 : ℝ≥0∞) < (1e-2 : ℝ≥0∞) := by
-    change (1 / 128 : ℝ≥0∞) < 1 / 100
-    apply (ENNReal.toReal_lt_toReal (by norm_num) (by norm_num)).mp
-    simp [ENNReal.toReal_div]
+    have hNN : (1 / 128 : ℝ≥0) < (1e-2 : ℝ≥0) := by
+      change ((1 / 128 : ℝ≥0) : ℝ) < ((1e-2 : ℝ≥0) : ℝ)
+      norm_num
+    calc
+      (1 / 128 : ℝ≥0∞) = ((1 / 128 : ℝ≥0) : ℝ≥0∞) := by
+        symm
+        exact ENNReal.coe_div (by norm_num : (128 : ℝ≥0) ≠ 0)
+      _ < ((1e-2 : ℝ≥0) : ℝ≥0∞) := by exact_mod_cast hNN
+      _ = (1e-2 : ℝ≥0∞) := rfl
   exact (not_le_of_gt hlt) hbad
 
 #print axioms green54_counterexample
