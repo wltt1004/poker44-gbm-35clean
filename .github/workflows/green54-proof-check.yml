@@ -24,10 +24,19 @@ jobs:
           ref: 379fc0298dc146df549e7061c3ede0353a5bb51f
           path: green54-proof-check/vendor/formal-conjectures
           fetch-depth: 1
+      - name: Restore Lean and Mathlib environment
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.elan
+            green54-proof-check/vendor/formal-conjectures/.lake/packages
+          key: green54-lean427-mathlib-a3a10db0-v1
       - name: Install Lean 4.27.0
         run: |
-          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
-            | sh -s -- -y --default-toolchain leanprover/lean4:v4.27.0
+          if [ ! -x "$HOME/.elan/bin/lean" ]; then
+            curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+              | sh -s -- -y --default-toolchain leanprover/lean4:v4.27.0
+          fi
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Download Mathlib cache
         working-directory: green54-proof-check/vendor/formal-conjectures
