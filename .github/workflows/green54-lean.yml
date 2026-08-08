@@ -43,7 +43,10 @@ jobs:
         continue-on-error: true
         run: |
           lake build Green54Check
-          lake env lean Green54Check/Classification.lean
+          mkdir -p .lake/build/lib/lean/Green54Check
+          lake env lean \
+            -o .lake/build/lib/lean/Green54Check/Classification.olean \
+            Green54Check/Classification.lean
           if [ -f Green54Check/Final.lean ]; then
             lake env lean Green54Check/Final.lean
           fi
