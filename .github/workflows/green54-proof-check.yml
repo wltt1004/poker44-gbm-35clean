@@ -20,8 +20,17 @@ jobs:
       - uses: leanprover/lean-action@v1
         with:
           lake-package-directory: green54-proof-check
-          build: true
+          auto-config: false
+          build: false
           test: false
           lint: false
-          use-mathlib-cache: true
-          build-args: Green54Check
+          use-mathlib-cache: false
+      - name: Resolve dependencies
+        working-directory: green54-proof-check
+        run: lake update
+      - name: Download Mathlib cache
+        working-directory: green54-proof-check
+        run: lake exe cache get
+      - name: Build proof
+        working-directory: green54-proof-check
+        run: lake build Green54Check
