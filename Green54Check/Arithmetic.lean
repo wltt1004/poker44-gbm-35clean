@@ -54,4 +54,18 @@ example : (1 / 128 : ℝ≥0∞) < (1e-2 : ℝ≥0∞) := by
     _ < ((1e-2 : ℝ≥0) : ℝ≥0∞) := by exact_mod_cast hNN
     _ = (1e-2 : ℝ≥0∞) := rfl
 
+example :
+    (1 / 256 : ℝ≥0∞) + (1 / 256 : ℝ≥0∞) = (1 / 128 : ℝ≥0∞) := by
+  have h256 : (1 / 256 : ℝ≥0∞) = ((1 / 256 : ℝ≥0) : ℝ≥0∞) := by
+    symm
+    exact ENNReal.coe_div (by norm_num : (256 : ℝ≥0) ≠ 0)
+  have h128 : (1 / 128 : ℝ≥0∞) = ((1 / 128 : ℝ≥0) : ℝ≥0∞) := by
+    symm
+    exact ENNReal.coe_div (by norm_num : (128 : ℝ≥0) ≠ 0)
+  have hNN : (1 / 256 : ℝ≥0) + (1 / 256 : ℝ≥0) = (1 / 128 : ℝ≥0) := by
+    ext
+    norm_num
+  rw [h256, h128]
+  exact_mod_cast hNN
+
 end Green54Counterexample
