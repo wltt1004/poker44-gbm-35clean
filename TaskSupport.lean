@@ -36,7 +36,7 @@ partial def replaceAnswer (expression replacement : Expr) : MetaM (Expr × Nat) 
   | .lam name domain body binderInfo =>
       let (newDomain, domainCount) ← replaceAnswer domain replacement
       let (newBody, bodyCount) ← replaceAnswer body replacement
-      return (.lam name domain newBody binderInfo, domainCount + bodyCount)
+      return (.lam name newDomain newBody binderInfo, domainCount + bodyCount)
   | .forallE name domain body binderInfo =>
       let (newDomain, domainCount) ← replaceAnswer domain replacement
       let (newBody, bodyCount) ← replaceAnswer body replacement
