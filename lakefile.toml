@@ -11,3 +11,6 @@ name = "Green54Check"
 
 [[lean_lib]]
 name = "TaskSupport"
+
+[[lean_lib]]
+name = "ValidatorTaskSupport"
