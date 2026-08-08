@@ -17,14 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: leanprover/lean-action@v1
-        with:
-          lake-package-directory: green54-proof-check
-          auto-config: false
-          build: false
-          test: false
-          lint: false
-          use-mathlib-cache: false
+      - name: Install Lean 4.27.0
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain leanprover/lean4:v4.27.0
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Resolve dependencies
         working-directory: green54-proof-check
         run: lake update
