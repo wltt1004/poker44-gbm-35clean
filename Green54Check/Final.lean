@@ -1,5 +1,7 @@
 import Green54Check.Classification
 
+/-! The completed counterexample to the scalar-dilation formalization of Green's Problem 54. -/
+
 open MeasureTheory ProbabilityTheory
 open scoped Pointwise ENNReal NNReal Topology
 
@@ -79,9 +81,18 @@ theorem green54_counterexample :
       _ ≤ (1 / 256 : ℝ≥0∞) + (1 / 256 : ℝ≥0∞) :=
         add_le_add (measure_cone_le hxU) (measure_cone_le hnegU)
       _ = (1 / 128 : ℝ≥0∞) := by
-        apply (ENNReal.toReal_eq_toReal_iff' (by norm_num) (by norm_num)).mp
-        rw [ENNReal.toReal_add (by norm_num) (by norm_num)]
-        simp [ENNReal.toReal_div]
+        have h256 : (1 / 256 : ℝ≥0∞) = ((1 / 256 : ℝ≥0) : ℝ≥0∞) := by
+          symm
+          exact ENNReal.coe_div (by norm_num : (256 : ℝ≥0) ≠ 0)
+        have h128 : (1 / 128 : ℝ≥0∞) = ((1 / 128 : ℝ≥0) : ℝ≥0∞) := by
+          symm
+          exact ENNReal.coe_div (by norm_num : (128 : ℝ≥0) ≠ 0)
+        have hNN :
+            (1 / 256 : ℝ≥0) + (1 / 256 : ℝ≥0) = (1 / 128 : ℝ≥0) := by
+          ext
+          norm_num
+        rw [h256, h128]
+        exact_mod_cast hNN
   have hbad : (1e-2 : ℝ≥0∞) ≤ (1 / 128 : ℝ≥0∞) :=
     hCmeasure.trans hbound
   have hlt : (1 / 128 : ℝ≥0∞) < (1e-2 : ℝ≥0∞) := by
