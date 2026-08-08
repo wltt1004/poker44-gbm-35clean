@@ -3,7 +3,7 @@ import FormalConjectures.GreensOpenProblems.«54»
 /-! Exact-environment development for the Green 54 counterexample task. -/
 
 open MeasureTheory ProbabilityTheory
-open scoped Pointwise ENNReal Topology
+open scoped Pointwise ENNReal NNReal Topology
 
 namespace Green54Counterexample
 
@@ -24,7 +24,7 @@ lemma measurableSet_U : MeasurableSet U := by
 lemma measure_U : γ U = 1 := by
   letI : NoAtoms g := noAtoms_gaussianReal (μ := 0) (v := 1) (by norm_num)
   have hfactor : g (({0} : Set ℝ)ᶜ) = 1 := by
-    rw [measure_compl (by measurability), measure_univ]
+    rw [measure_compl (measurableSet_singleton 0) (measure_ne_top g {0}), measure_univ]
     simp
   rw [Green54.gaussianMeasureInf, U,
     Measure.infinitePi_pi_univ (fun _ : ℕ => g) (by intro i; measurability)]
@@ -41,7 +41,7 @@ lemma gaussian_half_closed :
       g (Set.Ici (0 : ℝ)) = (Measure.map (fun x : ℝ => -x) g) (Set.Ici (0 : ℝ)) := by
         rw [hmap]
       _ = g ((fun x : ℝ => -x) ⁻¹' Set.Ici (0 : ℝ)) := by
-        rw [Measure.map_apply (by fun_prop) (by measurability)]
+        rw [Measure.map_apply (by fun_prop) measurableSet_Ici]
       _ = g (Set.Iic (0 : ℝ)) := by
         congr 1
         ext x
@@ -58,7 +58,7 @@ lemma gaussian_half_closed :
       change x = 0 at h0
       subst x
       exact (lt_irrefl 0 hx)
-    rw [hs, measure_union hdis (by measurability)]
+    rw [hs, measure_union hdis (measurableSet_singleton 0)]
     simp
   have hsum : g (Set.Iio (0 : ℝ)) + g (Set.Ici (0 : ℝ)) = 1 := by
     have hdis : Disjoint (Set.Iio (0 : ℝ)) (Set.Ici (0 : ℝ)) := by
@@ -67,7 +67,7 @@ lemma gaussian_half_closed :
       change x < 0 at hx₁
       change 0 ≤ x at hx₂
       exact (not_lt_of_ge hx₂) hx₁
-    rw [← measure_union hdis (by measurability)]
+    rw [← measure_union hdis measurableSet_Ici]
     have hs : Set.Iio (0 : ℝ) ∪ Set.Ici (0 : ℝ) = Set.univ := by
       ext x
       simp
