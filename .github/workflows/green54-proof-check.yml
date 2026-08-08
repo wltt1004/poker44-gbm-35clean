@@ -43,9 +43,27 @@ jobs:
         if: steps.lean-cache.outputs.cache-hit != 'true'
         working-directory: green54-proof-check/vendor/formal-conjectures
         run: lake exe cache get
+      - name: Assemble proof candidate
+        working-directory: green54-proof-check/vendor/formal-conjectures
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          base_path = Path('../../Green54Check.lean')
+          extra_path = Path('../../Green54Extra.lean')
+          base = base_path.read_text()
+          old = '''  have h99q : (0.99 : ℚ≥0) < 1 := by norm_num
+            have h99 : (0.99 : ℝ≥0∞) < 1 := by exact_mod_cast h99q'''
+          new = '''  have h99 : (0.99 : ℝ≥0∞) < 1 := by
+            rw [NNRatCast.toOfScientific_def]
+            norm_num'''
+          if old not in base:
+              raise SystemExit('expected h99 block not found')
+          base = base.replace(old, new)
+          Path('../../Green54Combined.lean').write_text(base + '\n' + extra_path.read_text())
+          PY
       - name: Check proof
         working-directory: green54-proof-check/vendor/formal-conjectures
-        run: lake env lean ../../Green54Check.lean
+        run: lake env lean ../../Green54Combined.lean
       - name: Save Lean and Mathlib environment
         if: always() && steps.lean-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
