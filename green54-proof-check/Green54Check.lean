@@ -41,9 +41,8 @@ lemma ratioCone_balanced (n : ℕ) : Balanced ℝ (ratioCone n) := by
 
 lemma ratioCone_mono : Monotone ratioCone := by
   intro n m hnm x hx i j
-  exact (hx i j).trans <| by
-    gcongr
-    exact_mod_cast hnm
+  have hnm' : (n : ℝ) ≤ (m : ℝ) := by exact_mod_cast hnm
+  exact (hx i j).trans (mul_le_mul_of_nonneg_right hnm' (abs_nonneg _))
 
 lemma ratioCone_eq_zero_of_coord_eq_zero (n : ℕ) {x : I7 → ℝ}
     (hx : x ∈ ratioCone n) {i : I7} (hi : x i = 0) : x = 0 := by
@@ -63,14 +62,18 @@ lemma noZero_subset_iUnion_ratioCone : noZero ⊆ ⋃ n : ℕ, ratioCone n := by
 
 lemma μ7_noZero : μ7 noZero = 1 := by
   letI : NoAtoms (gaussianReal 0 1) := noAtoms_gaussianReal (by norm_num)
+  have hcomp : gaussianReal 0 1 ({0}ᶜ : Set ℝ) = 1 := by
+    rw [measure_compl (MeasurableSet.singleton 0)]
+    simp
   rw [show noZero = univ.pi (fun _ : I7 => ({0}ᶜ : Set ℝ)) by
     ext x
     simp [noZero]]
-  simp [μ7, Measure.pi_pi]
+  rw [μ7, Measure.pi_pi]
+  simp [hcomp]
 
 lemma μ7_iUnion_ratioCone : μ7 (⋃ n : ℕ, ratioCone n) = 1 := by
   apply le_antisymm
-  · exact measure_le_one
+  · simpa using measure_mono (show (⋃ n : ℕ, ratioCone n) ⊆ (univ : Set (I7 → ℝ)) from subset_univ _)
   · rw [← μ7_noZero]
     exact measure_mono noZero_subset_iUnion_ratioCone
 
@@ -79,7 +82,81 @@ lemma exists_ratioCone_large : ∃ n : ℕ, (0.99 : ℝ≥0∞) < μ7 (ratioCone
     simpa [Function.comp_def, μ7_iUnion_ratioCone] using
       (tendsto_measure_iUnion_atTop (μ := μ7) ratioCone_mono)
   have hev : ∀ᶠ n : ℕ in atTop, (0.99 : ℝ≥0∞) < μ7 (ratioCone n) :=
-    hlim.eventually (Ioi_mem_nhds (by norm_num))
-  exact (eventually_atTop.1 hev).imp fun n hn => ⟨n, hn n le_rfl⟩
+    hlim.eventually (Ioi_mem_nhds (by norm_num [OfScientific.ofScientific]))
+  rcases eventually_atTop.1 hev with ⟨n, hn⟩
+  exact ⟨n, hn n le_rfl⟩
+
+section ProductAbsoluteContinuity
+
+variable {δ : Type*} {X : δ → Type*} [∀ i, MeasurableSpace (X i)]
+variable {μ ν : ∀ i, Measure (X i)} [∀ i, SigmaFinite (ν i)]
+
+lemma tprod_absolutelyContinuous (h : ∀ i, μ i ≪ ν i) (l : List δ) :
+    Measure.tprod l μ ≪ Measure.tprod l ν := by
+  induction l with
+  | nil => exact Measure.AbsolutelyContinuous.rfl
+  | cons i l ih =>
+      rw [Measure.tprod_cons, Measure.tprod_cons]
+      exact (h i).prod ih
+
+variable [Fintype δ] [Encodable δ] [∀ i, SigmaFinite (μ i)]
+
+lemma pi_absolutelyContinuous (h : ∀ i, μ i ≪ ν i) :
+    Measure.pi μ ≪ Measure.pi ν := by
+  classical
+  rw [← Measure.pi'_eq_pi μ, ← Measure.pi'_eq_pi ν]
+  unfold Measure.pi'
+  exact (tprod_absolutelyContinuous h (Encodable.sortedUniv δ)).map
+    (MeasurableEquiv.piMeasurableEquivTProd
+      (Encodable.sortedUniv_nodup δ) (Encodable.mem_sortedUniv)).symm.measurable
+
+end ProductAbsoluteContinuity
+
+lemma μ7_absolutelyContinuous_volume : μ7 ≪ (volume : Measure (I7 → ℝ)) := by
+  unfold μ7
+  rw [volume_pi]
+  exact pi_absolutelyContinuous (fun _ => gaussianReal_absolutelyContinuous 0 (by norm_num))
+
+lemma gaussianReal_Iic_zero : gaussianReal 0 1 (Iic (0 : ℝ)) = (2 : ℝ≥0∞)⁻¹ := by
+  let μ : Measure ℝ := gaussianReal 0 1
+  letI : NoAtoms μ := noAtoms_gaussianReal (by norm_num)
+  have hsymm : Measure.map (fun x : ℝ => -x) μ = μ := by
+    simpa [μ] using gaussianReal_map_neg (μ := 0) (v := 1)
+  have hleft_right : μ (Iic (0 : ℝ)) = μ (Ici (0 : ℝ)) := by
+    calc
+      μ (Iic (0 : ℝ)) = (Measure.map (fun x : ℝ => -x) μ) (Iic 0) := by rw [hsymm]
+      _ = μ ((fun x : ℝ => -x) ⁻¹' Iic 0) := Measure.map_apply_of_aemeasurable
+        measurable_neg.aemeasurable measurableSet_Iic
+      _ = μ (Ici 0) := by congr 1; ext x; simp
+  have hIci_Ioi : μ (Ici (0 : ℝ)) = μ (Ioi (0 : ℝ)) := by
+    have hu : ({0} : Set ℝ) ∪ Ioi 0 = Ici 0 := by ext x; simp [le_iff_eq_or_lt]
+    calc
+      μ (Ici 0) = μ (({0} : Set ℝ) ∪ Ioi 0) := by rw [hu]
+      _ = μ ({0} : Set ℝ) + μ (Ioi 0) := measure_union (by simp [Set.disjoint_left]) measurableSet_Ioi
+      _ = μ (Ioi 0) := by simp
+  have hsum : μ (Iic (0 : ℝ)) + μ (Ioi (0 : ℝ)) = 1 := by
+    calc
+      μ (Iic 0) + μ (Ioi 0) = μ (Iic 0 ∪ Ioi 0) :=
+        (measure_union (by simp [Set.disjoint_left]) measurableSet_Ioi).symm
+      _ = 1 := by simp
+  have htwo : (2 : ℝ≥0∞) * μ (Iic (0 : ℝ)) = 1 := by
+    rw [two_mul]
+    simpa [hleft_right, hIci_Ioi] using hsum
+  calc
+    μ (Iic (0 : ℝ)) = (2 : ℝ≥0∞)⁻¹ * ((2 : ℝ≥0∞) * μ (Iic 0)) := by
+      rw [ENNReal.inv_mul_cancel_left] <;> norm_num
+    _ = (2 : ℝ≥0∞)⁻¹ := by rw [htwo, mul_one]
+
+lemma gaussianReal_Ici_zero : gaussianReal 0 1 (Ici (0 : ℝ)) = (2 : ℝ≥0∞)⁻¹ := by
+  have hsymm : gaussianReal 0 1 (Iic (0 : ℝ)) = gaussianReal 0 1 (Ici (0 : ℝ)) := by
+    let μ : Measure ℝ := gaussianReal 0 1
+    have hmap : Measure.map (fun x : ℝ => -x) μ = μ := by
+      simpa [μ] using gaussianReal_map_neg (μ := 0) (v := 1)
+    calc
+      gaussianReal 0 1 (Iic 0) = (Measure.map (fun x : ℝ => -x) μ) (Iic 0) := by simpa [μ, hmap]
+      _ = μ ((fun x : ℝ => -x) ⁻¹' Iic 0) := Measure.map_apply_of_aemeasurable
+        measurable_neg.aemeasurable measurableSet_Iic
+      _ = gaussianReal 0 1 (Ici 0) := by simp [μ]; congr 1; ext x; simp
+  rw [← hsymm, gaussianReal_Iic_zero]
 
 end Bounty
