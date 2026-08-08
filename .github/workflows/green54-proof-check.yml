@@ -29,12 +29,9 @@ jobs:
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
             | sh -s -- -y --default-toolchain leanprover/lean4:v4.27.0
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Resolve dependencies
-        working-directory: green54-proof-check
-        run: lake update
       - name: Download Mathlib cache
-        working-directory: green54-proof-check
+        working-directory: green54-proof-check/vendor/formal-conjectures
         run: lake exe cache get
-      - name: Build proof
-        working-directory: green54-proof-check
-        run: lake build Green54Check
+      - name: Check proof
+        working-directory: green54-proof-check/vendor/formal-conjectures
+        run: lake env lean ../../Green54Check.lean
