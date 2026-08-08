@@ -1,0 +1,11 @@
+name = "green54_check"
+version = "0.1.0"
+defaultTargets = ["Green54Check"]
+
+[[require]]
+name = "formal_conjectures"
+git = "https://github.com/google-deepmind/formal-conjectures.git"
+rev = "379fc0298dc146df549e7061c3ede0353a5bb51f"
+
+[[lean_lib]]
+name = "Green54Check"
