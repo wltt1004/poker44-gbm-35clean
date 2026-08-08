@@ -1,0 +1,104 @@
+name: Green54 downloadable package
+
+on:
+  push:
+    branches:
+      - scratch/green54-proof-check
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build downloadable files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/project/Green54Check dist/project/.github/workflows
+
+          cp Green54Check.lean dist/project/Green54Check.lean
+          cp Green54Check/Classification.lean dist/project/Green54Check/Classification.lean
+          cp Green54Check/Arithmetic.lean dist/project/Green54Check/Arithmetic.lean
+          cp Green54Check/Final.lean dist/project/Green54Check/Final.lean
+          cp lakefile.toml dist/project/lakefile.toml
+          cp lean-toolchain dist/project/lean-toolchain
+          cp .github/workflows/green54-lean.yml dist/project/.github/workflows/green54-lean.yml
+
+          cat > dist/project/README.md <<'EOF'
+          # Green 54 Lean counterexample
+
+          This package contains the exact modular Lean development from branch
+          `scratch/green54-proof-check`.
+
+          Main theorem:
+
+          `Green54Counterexample.green54_counterexample`
+
+          Build environment:
+
+          - Lean 4.27.0
+          - Formal Conjectures revision `379fc0298dc146df549e7061c3ede0353a5bb51f`
+          - Mathlib revision `a3a10db0e9d66acbebf76c5e6a135066525ac900`
+
+          The modular proof was compiled in GitHub Actions. Its axiom audit lists only
+          `propext`, `Classical.choice`, and `Quot.sound`.
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def body_without_import_and_audit(path: str) -> str:
+              lines = Path(path).read_text(encoding="utf-8").splitlines()
+              removed_import = False
+              output: list[str] = []
+              for line in lines:
+                  if not removed_import and line.startswith("import "):
+                      removed_import = True
+                      continue
+                  if line.strip().startswith("#print axioms"):
+                      continue
+                  output.append(line)
+              return "\n".join(output).strip()
+
+          root = Path("Green54Check.lean").read_text(encoding="utf-8").strip()
+          classification = body_without_import_and_audit(
+              "Green54Check/Classification.lean"
+          )
+          final = body_without_import_and_audit("Green54Check/Final.lean")
+
+          combined = "\n\n".join((root, classification, final)).rstrip() + "\n"
+          Path("dist/Green54_counterexample_single.lean").write_text(
+              combined, encoding="utf-8"
+          )
+          PY
+
+          cp dist/Green54_counterexample_single.lean \
+            dist/project/Green54_counterexample_single.lean
+
+          (
+            cd dist
+            zip -qr Green54-counterexample-package.zip project
+          )
+
+          sha256sum \
+            dist/Green54_counterexample_single.lean \
+            dist/Green54-counterexample-package.zip \
+            > dist/SHA256SUMS.txt
+
+      - name: Upload downloadable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Green54-counterexample-download
+          path: |
+            dist/Green54-counterexample-package.zip
+            dist/Green54_counterexample_single.lean
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
