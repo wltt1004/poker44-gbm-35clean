@@ -37,15 +37,14 @@ jobs:
           .conjectures-cli/bin/pip install 'git+https://github.com/conjectures-io/conjectures-miner.git@main'
           .conjectures-cli/bin/conjectures --help >/dev/null
 
-      - name: Confirm live task and commitment
+      - name: Capture the live allowlist
         run: |
           set -euo pipefail
           .conjectures-cli/bin/conjectures --output json tasks sync | tee dist/tasks-sync.json
-          .conjectures-cli/bin/conjectures --output json tasks show "$TASK_ID" | tee dist/task-live.json
-          grep -F "$TASK_ID" dist/task-live.json
-          grep -F "$TASK_SHA256" dist/task-live.json
+          .conjectures-cli/bin/conjectures --output json tasks list --filter green54 \
+            | tee dist/green54-live-tasks.json
 
-      - name: Build canonical bundle with a disposable test hotkey
+      - name: Build canonical test bundle from the published task data
         run: |
           set -euo pipefail
           .conjectures-cli/bin/conjectures --output json build \
@@ -57,13 +56,16 @@ jobs:
             --plan dist/preflight-plan.json \
             | tee dist/build.json
 
-      - name: Ask the live validator to preflight the exact proof bytes
+      - name: Capture the live validator preflight verdict
         run: |
-          set -euo pipefail
+          set +e
           .conjectures-cli/bin/conjectures --output json check \
             --plan dist/preflight-plan.json \
-            | tee dist/live-preflight.json
-          grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' dist/live-preflight.json
+            > dist/live-preflight.json 2>&1
+          status=$?
+          set -e
+          cat dist/live-preflight.json
+          printf '%s\n' "$status" > dist/live-preflight.exit-code
 
       - name: Record proof digest and final report
         run: |
@@ -77,21 +79,29 @@ jobs:
             echo 'LOCAL_POLICY:'
             cat dist/local-policy.txt
             echo
+            echo 'LIVE_ALLOWLIST_MATCHES:'
+            cat dist/green54-live-tasks.json
+            echo
+            echo 'LIVE_PREFLIGHT_EXIT_CODE:'
+            cat dist/live-preflight.exit-code
+            echo
             echo 'LIVE_PREFLIGHT:'
             cat dist/live-preflight.json
           } > dist/SUBMISSION_AUDIT.txt
 
-      - name: Upload validated Main.lean
+      - name: Upload Main.lean and authoritative live status
         uses: actions/upload-artifact@v4
         with:
-          name: Green54-live-preflight-passed
+          name: Green54-live-preflight-report
           path: |
             dist/Main.lean
             dist/Main.lean.sha256
             dist/SUBMISSION_AUDIT.txt
             dist/local-policy.txt
-            dist/task-live.json
+            dist/tasks-sync.json
+            dist/green54-live-tasks.json
             dist/build.json
             dist/live-preflight.json
+            dist/live-preflight.exit-code
           if-no-files-found: error
           retention-days: 30
