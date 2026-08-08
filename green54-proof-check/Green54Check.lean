@@ -12,6 +12,10 @@ abbrev I7 := ↥(Finset.range 7)
 noncomputable def μ7 : Measure (I7 → ℝ) :=
   Measure.pi (fun _ : I7 => gaussianReal 0 1)
 
+noncomputable instance μ7_isProbabilityMeasure : IsProbabilityMeasure μ7 := by
+  unfold μ7
+  infer_instance
+
 def ratioCone (n : ℕ) : Set (I7 → ℝ) :=
   {x | ∀ i j, |x i| ≤ (n : ℝ) * |x j|}
 
@@ -83,9 +87,8 @@ lemma exists_ratioCone_large : ∃ n : ℕ, (0.99 : ℝ≥0∞) < μ7 (ratioCone
   have hlim : Tendsto (fun n : ℕ => μ7 (ratioCone n)) atTop (𝓝 1) := by
     simpa [Function.comp_def, μ7_iUnion_ratioCone] using
       (tendsto_measure_iUnion_atTop (μ := μ7) ratioCone_mono)
-  have h99 : (0.99 : ℝ≥0∞) < 1 := by
-    change (99 / 100 : ℝ≥0∞) < 1
-    norm_num
+  have h99q : (0.99 : ℚ≥0) < 1 := by norm_num
+  have h99 : (0.99 : ℝ≥0∞) < 1 := by exact_mod_cast h99q
   have hev : ∀ᶠ n : ℕ in atTop, (0.99 : ℝ≥0∞) < μ7 (ratioCone n) :=
     hlim.eventually (Ioi_mem_nhds h99)
   rcases eventually_atTop.1 hev with ⟨n, hn⟩
@@ -185,12 +188,105 @@ lemma zero_not_mem_interior_ratioCone (n : ℕ) :
   simp [y, i0] at hy0
   linarith
 
+lemma interior_ratioCone_coord_ne_zero (n : ℕ) {x : I7 → ℝ}
+    (hx : x ∈ interior (ratioCone n)) (i : I7) : x i ≠ 0 := by
+  intro hi
+  have hzero := ratioCone_eq_zero_of_coord_eq_zero n (interior_subset hx) hi
+  rw [hzero] at hx
+  exact zero_not_mem_interior_ratioCone n hx
+
 def orthant (x : I7 → ℝ) : Set (I7 → ℝ) :=
   univ.pi fun i => if 0 < x i then Ici 0 else Iic 0
 
 lemma μ7_orthant (x : I7 → ℝ) :
     μ7 (orthant x) = ((2 : ℝ≥0∞)⁻¹) ^ 7 := by
   classical
-  simp [μ7, orthant, Measure.pi_pi, gaussianReal_Ici_zero, gaussianReal_Iic_zero]
+  rw [μ7, orthant, Measure.pi_pi]
+  have hfactor : ∀ i : I7,
+      gaussianReal 0 1 (if 0 < x i then Ici 0 else Iic 0) = (2 : ℝ≥0∞)⁻¹ := by
+    intro i
+    split_ifs <;> simp [gaussianReal_Ici_zero, gaussianReal_Iic_zero]
+  simp_rw [hfactor]
+  simp
+
+lemma convex_subset_ratioCone_same_sign (n : ℕ) {P : Set (I7 → ℝ)}
+    (hconv : Convex ℝ P) (hsub : P ⊆ ratioCone n)
+    {x : I7 → ℝ} (hx : x ∈ interior P) {y : I7 → ℝ} (hy : y ∈ P) (i : I7) :
+    0 ≤ x i * y i := by
+  have hxDint : x ∈ interior (ratioCone n) := interior_mono hsub hx
+  have hxine : x i ≠ 0 := interior_ratioCone_coord_ne_zero n hxDint i
+  by_contra hnonneg
+  have hneg : x i * y i < 0 := lt_of_not_ge hnonneg
+  have hyine : y i ≠ 0 := by
+    intro hyi
+    rw [hyi, mul_zero] at hneg
+    exact (lt_irrefl 0) hneg
+  have hax : 0 < |x i| := abs_pos.mpr hxine
+  have hay : 0 < |y i| := abs_pos.mpr hyine
+  let d : ℝ := |x i| + |y i|
+  let a : ℝ := |y i| / d
+  let b : ℝ := |x i| / d
+  have hd : 0 < d := by
+    dsimp [d]
+    exact add_pos hax hay
+  have ha : 0 < a := div_pos hay hd
+  have hb : 0 ≤ b := (div_pos hax hd).le
+  have hab : a + b = 1 := by
+    dsimp [a, b, d]
+    rw [← add_div, add_comm]
+    exact div_self (ne_of_gt (add_pos hax hay))
+  have hzint : a • x + b • y ∈ interior P :=
+    hconv.combo_interior_self_mem_interior hx hy ha hb hab
+  have hnum : |y i| * x i + |x i| * y i = 0 := by
+    rcases (mul_neg_iff.mp hneg) with ⟨hxpos, hyneg⟩ | ⟨hxneg, hypos⟩
+    · rw [abs_of_neg hyneg, abs_of_pos hxpos]
+      ring
+    · rw [abs_of_pos hypos, abs_of_neg hxneg]
+      ring
+  have hzi : (a • x + b • y) i = 0 := by
+    simp only [Pi.add_apply, Pi.smul_apply, smul_eq_mul]
+    change (|y i| / d) * x i + (|x i| / d) * y i = 0
+    rw [div_mul_eq_mul_div, div_mul_eq_mul_div, ← add_div, hnum, zero_div]
+  have hzDint : a • x + b • y ∈ interior (ratioCone n) := interior_mono hsub hzint
+  have hzero := ratioCone_eq_zero_of_coord_eq_zero n (interior_subset hzDint) hzi
+  rw [hzero] at hzDint
+  exact zero_not_mem_interior_ratioCone n hzDint
+
+lemma convex_subset_ratioCone_subset_orthant (n : ℕ) {P : Set (I7 → ℝ)}
+    (hconv : Convex ℝ P) (hsub : P ⊆ ratioCone n)
+    {x : I7 → ℝ} (hx : x ∈ interior P) : P ⊆ orthant x := by
+  intro y hy
+  change ∀ i ∈ (univ : Set I7), y i ∈ if 0 < x i then Ici 0 else Iic 0
+  intro i _
+  have hs := convex_subset_ratioCone_same_sign n hconv hsub hx hy i
+  by_cases hxi : 0 < x i
+  · simp only [hxi, if_true, mem_Ici]
+    nlinarith
+  · have hxne : x i ≠ 0 :=
+      interior_ratioCone_coord_ne_zero n (interior_mono hsub hx) i
+    have hxlt : x i < 0 := lt_of_le_of_ne (le_of_not_gt hxi) hxne
+    simp only [hxi, if_false, mem_Iic]
+    nlinarith
+
+lemma convex_subset_ratioCone_measure_le (n : ℕ) {P : Set (I7 → ℝ)}
+    (hconv : Convex ℝ P) (hsub : P ⊆ ratioCone n) :
+    μ7 P ≤ ((2 : ℝ≥0∞)⁻¹) ^ 7 := by
+  by_cases hμzero : μ7 P = 0
+  · simp [hμzero]
+  have hμpos : 0 < μ7 P := pos_iff_ne_zero.mpr hμzero
+  have hvolpos : 0 < (volume : Measure (I7 → ℝ)) P :=
+    μ7_absolutelyContinuous_volume.pos_mono hμpos
+  have hspan : affineSpan ℝ P = ⊤ := by
+    by_contra hne
+    have hnull : (volume : Measure (I7 → ℝ)) (affineSpan ℝ P) = 0 :=
+      Measure.addHaar_affineSubspace (volume : Measure (I7 → ℝ)) (affineSpan ℝ P) hne
+    have hPnull : (volume : Measure (I7 → ℝ)) P = 0 :=
+      measure_mono_null (subset_affineSpan ℝ P) hnull
+    exact (ne_of_gt hvolpos) hPnull
+  obtain ⟨x, hx⟩ := (hconv.interior_nonempty_iff_affineSpan_eq_top).2 hspan
+  calc
+    μ7 P ≤ μ7 (orthant x) :=
+      measure_mono (convex_subset_ratioCone_subset_orthant n hconv hsub hx)
+    _ = ((2 : ℝ≥0∞)⁻¹) ^ 7 := μ7_orthant x
 
 end Bounty
