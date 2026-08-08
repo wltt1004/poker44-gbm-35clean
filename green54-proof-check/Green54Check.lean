@@ -13,9 +13,12 @@ open scoped Pointwise ENNReal
 #check Measure.tprod_cons
 #check Measure.AbsolutelyContinuous.prod
 #check Measure.AbsolutelyContinuous.map
+#check Measure.AbsolutelyContinuous.null_mono
+#check Measure.AbsolutelyContinuous.pos_mono
 #check Measure.infinitePi_cylinder
 #check Measure.infinitePi_map_restrict
 #check Measure.pi_pi
+#check volume_pi_pi
 #check tendsto_measure_iUnion_atTop
 #check Convex.interior_nonempty_iff_affineSpan_eq_top
 #check Measure.addHaar_affineSubspace
@@ -51,20 +54,13 @@ open scoped Pointwise ENNReal
 #check Measure.map_apply_of_aemeasurable
 #check Measure.restrict_apply
 #check MeasurableSet.cylinder
-#check continuous_finset_restrict
 #check Finset.continuous_restrict
 #check Finset.restrict
 #check Convex.linear_image
-#check Convex.isometry_image
-#check Measure.AbsolutelyContinuous.measure_eq_zero
 #check Measure.AbsolutelyContinuous.mk
-#check MeasurableSet.Iic
-#check MeasurableSet.Ici
 #check MeasurableSet.singleton
 #check measure_singleton
-#check MeasureTheory.Measure.measure_singleton
 #check Measure.map_mono
-#check Measure.mono
 #check Filter.Tendsto.eventually
 #check Metric.isOpen_iff
 
