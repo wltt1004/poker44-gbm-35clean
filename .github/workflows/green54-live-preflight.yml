@@ -25,6 +25,7 @@ jobs:
       - name: Generate exact Main.lean and run local static scan
         run: |
           set -euo pipefail
+          mkdir -p dist
           python3 scripts/green54_prepare_submission.py | tee dist/local-policy.txt
           test -s dist/Main.lean
 
