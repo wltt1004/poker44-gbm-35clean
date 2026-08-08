@@ -113,7 +113,9 @@ lemma measure_orthant8 (x : Ω) :
   rw [Green54.gaussianMeasureInf, orthant8,
     Measure.infinitePi_pi (fun _ : ℕ => g)
       (fun i hi => measurableSet_halfLine (x i))]
-  norm_num [measure_halfLine, inv_pow]
+  norm_num [measure_halfLine]
+  apply (ENNReal.toReal_eq_toReal_iff' (by norm_num) (by norm_num)).mp
+  norm_num
 
 lemma cone_subset_orthant8 {x : Ω} (hx : x ∈ U) :
     cone x ⊆ orthant8 x := by
@@ -140,9 +142,9 @@ lemma neg_mem_U {x : Ω} (hx : x ∈ U) : -x ∈ U := by
 
 lemma measure_singleton_zero : γ ({0} : Set Ω) = 0 := by
   letI : NoAtoms g := noAtoms_gaussianReal (μ := 0) (v := 1) (by norm_num)
-  let Z : Set Ω := Set.pi ({0} : Finset ℕ) (fun _ => ({0} : Set ℝ))
-  have hZ : γ Z = 0 := by
-    rw [Green54.gaussianMeasureInf, Z,
+  have hZ :
+      γ (Set.pi ({0} : Finset ℕ) (fun _ => ({0} : Set ℝ))) = 0 := by
+    rw [Green54.gaussianMeasureInf,
       Measure.infinitePi_pi (fun _ : ℕ => g)
         (fun i hi => measurableSet_singleton 0)]
     simp
@@ -150,7 +152,7 @@ lemma measure_singleton_zero : γ ({0} : Set Ω) = 0 := by
   intro x hx
   have hx0 : x = 0 := by simpa using hx
   subst x
-  simp [Z]
+  simp
 
 def scalarHull (B : Set Ω) : Set Ω :=
   Metric.closedBall (0 : ℝ) 1 • B
@@ -162,7 +164,7 @@ lemma subset_scalarHull (B : Set Ω) : B ⊆ scalarHull B := by
 
 lemma isCompact_scalarHull {B : Set Ω} (hB : IsCompact B) :
     IsCompact (scalarHull B) := by
-  exact IsCompact.smul_set isCompact_closedBall hB
+  exact IsCompact.smul_set (isCompact_closedBall (0 : ℝ) 1) hB
 
 lemma balanced_scalarHull (B : Set Ω) : Balanced ℝ (scalarHull B) := by
   intro a ha
