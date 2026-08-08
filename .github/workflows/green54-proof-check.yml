@@ -54,8 +54,8 @@ jobs:
           old = '''  have h99q : (0.99 : ℚ≥0) < 1 := by norm_num
             have h99 : (0.99 : ℝ≥0∞) < 1 := by exact_mod_cast h99q'''
           new = '''  have h99 : (0.99 : ℝ≥0∞) < 1 := by
-            rw [NNRatCast.toOfScientific_def]
-            norm_num'''
+              rw [NNRatCast.toOfScientific_def]
+              norm_num'''
           if old not in base:
               raise SystemExit('expected h99 block not found')
           base = base.replace(old, new)
