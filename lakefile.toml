@@ -8,3 +8,6 @@ path = ".deps/formal-conjectures"
 
 [[lean_lib]]
 name = "Green54Check"
+
+[[lean_lib]]
+name = "TaskSupport"
