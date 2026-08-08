@@ -39,6 +39,11 @@ jobs:
       - name: Download Mathlib cache
         if: steps.lean-cache.outputs.cache-hit != 'true'
         run: lake exe cache get
-      - name: Build Green54Check
+      - name: Compile Green54 development
         continue-on-error: true
-        run: lake build Green54Check
+        run: |
+          lake build Green54Check
+          lake env lean Green54Check/Classification.lean
+          if [ -f Green54Check/Final.lean ]; then
+            lake env lean Green54Check/Final.lean
+          fi
