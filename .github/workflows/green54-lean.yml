@@ -1,4 +1,4 @@
-name: Green54 Lean check
+name: Green54 submission verification
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -32,7 +32,7 @@ jobs:
           fi
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      - name: Unpack exact Formal Conjectures revision
+      - name: Unpack pinned Formal Conjectures source
         run: |
           mkdir -p .deps/formal-conjectures
           curl -L --fail https://codeload.github.com/google-deepmind/formal-conjectures/tar.gz/379fc0298dc146df549e7061c3ede0353a5bb51f \
@@ -55,69 +55,262 @@ jobs:
           lake env lean Green54Check/Arithmetic.lean
           lake env lean Green54Check/Final.lean
 
-      - name: Generate single-file Conjectures submission
+      - name: Generate exact miner Main.lean and wrapped Solution.lean
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          def without_first_import(path: str) -> str:
-              lines = Path(path).read_text(encoding="utf-8").splitlines()
-              removed = False
-              out = []
+          def strip_module(text: str) -> str:
+              lines = text.splitlines()
+              output: list[str] = []
+              in_module_doc = False
               for line in lines:
-                  if not removed and line.startswith("import "):
-                      removed = True
+                  stripped = line.strip()
+                  if stripped.startswith("import "):
                       continue
-                  if line.strip().startswith("#print axioms"):
+                  if stripped.startswith("/-!"):
+                      if "-/" not in stripped[3:]:
+                          in_module_doc = True
                       continue
-                  out.append(line)
-              return "\n".join(out).strip()
+                  if in_module_doc:
+                      if "-/" in line:
+                          in_module_doc = False
+                      continue
+                  if stripped.startswith("open MeasureTheory"):
+                      continue
+                  if stripped.startswith("open scoped "):
+                      continue
+                  if stripped in {"namespace Green54Counterexample", "end Green54Counterexample"}:
+                      continue
+                  if stripped.startswith("local notation "):
+                      continue
+                  if stripped.startswith("#print axioms"):
+                      continue
+                  output.append(line)
+              return "\n".join(output).strip()
 
-          root = Path("Green54Check.lean").read_text(encoding="utf-8").strip()
-          classification = without_first_import("Green54Check/Classification.lean")
-          final = without_first_import("Green54Check/Final.lean")
-          core = "\n\n".join([root, classification, final]).rstrip() + "\n"
+          pieces: list[str] = []
+          for source in (
+              "Green54Check.lean",
+              "Green54Check/Classification.lean",
+              "Green54Check/Final.lean",
+          ):
+              piece = strip_module(Path(source).read_text(encoding="utf-8"))
+              piece = piece.replace("abbrev Ω := ℕ → ℝ", "abbrev G54Omega := ℕ → ℝ")
+              piece = re.sub(r"(?<![\\w])Ω(?![\\w])", "G54Omega", piece)
+              piece = re.sub(
+                  r"(?<![\\w])γ(?![\\w])",
+                  "Green54.gaussianMeasureInf",
+                  piece,
+              )
+              piece = re.sub(
+                  r"(?<![\\w])g(?![\\w])",
+                  "(gaussianReal 0 1)",
+                  piece,
+              )
+              pieces.append(piece)
+
+          root, classification, final = pieces
+          old_header = '''theorem green54_counterexample :
+              ¬ (True ↔
+                ∀ (K : Set G54Omega),
+                  IsCompact K →
+                    Balanced ℝ K →
+                      (0.99 : ℝ≥0∞) ≤ Green54.gaussianMeasureInf K →
+                        ∃ C : Set G54Omega,
+                          IsCompact C ∧
+                            Convex ℝ C ∧
+                              C ⊆ (10 : ℝ) • K ∧
+                                (1e-2 : ℝ≥0∞) ≤ Green54.gaussianMeasureInf C) := by'''
+          new_header = '''theorem target :
+              ¬ (True ↔
+                ∀ (K : Set (ℕ → ℝ)),
+                  IsCompact K →
+                    Balanced ℝ K →
+                      (0.99 : ℝ≥0∞) ≤ Green54.gaussianMeasureInf K →
+                        ∃ C : Set (ℕ → ℝ),
+                          IsCompact C ∧
+                            Convex ℝ C ∧
+                              C ⊆ (10 : ℝ) • K ∧
+                                (1e-2 : ℝ≥0∞) ≤ Green54.gaussianMeasureInf C) := by'''
+          if old_header not in final:
+              raise SystemExit("the compiled proof header changed; refusing to package stale text")
+          final = final.replace(old_header, new_header, 1)
+
+          main = (
+              "/- Green 54 counterexample submission body.\n"
+              "   The verifier inserts this file between the trusted SolutionHeader and\n"
+              "   SolutionFooter, so it intentionally contains no imports or namespace commands. -/\n\n"
+              "open MeasureTheory ProbabilityTheory\n"
+              "open scoped Pointwise ENNReal NNReal Topology\n\n"
+              + root
+              + "\n\n"
+              + classification
+              + "\n\n"
+              + final
+              + "\n"
+          )
 
           dist = Path("dist")
           dist.mkdir(exist_ok=True)
-          (dist / "Green54_counterexample_core.lean").write_text(core, encoding="utf-8")
-
-          first_import, rest = core.split("\n", 1)
-          submission = (
-              first_import
-              + "\nimport TaskSupport\n"
-              + rest.rstrip()
-              + "\n\nnamespace Bounty\n\n"
-              + "theorem target : ¬ (fcTypeOfName% \"Green54.green_54\") := by\n"
-              + "  exact Green54Counterexample.green54_counterexample\n\n"
-              + "end Bounty\n"
+          (dist / "Main.lean").write_text(main, encoding="utf-8")
+          solution = (
+              "import FormalConjectures.GreensOpenProblems.«54»\n"
+              "import TaskSupport\n\n"
+              "namespace Bounty\n\n"
+              + main
+              + "\nend Bounty\n"
           )
-          (dist / "Green54_counterexample_submission.lean").write_text(
-              submission, encoding="utf-8"
-          )
+          (dist / "Solution.lean").write_text(solution, encoding="utf-8")
           PY
 
-      - name: Compile exact single-file task submission and audit axioms
+      - name: Apply the validator static submission policy
+        run: |
+          python3 - <<'PY'
+          from dataclasses import dataclass
+          from pathlib import Path
+          import re
+          import unicodedata
+
+          @dataclass(frozen=True)
+          class Token:
+              value: str
+              line: int
+              column: int
+              depth: int
+              line_start: bool
+
+          prohibited = frozenset({
+              "import", "prelude", "module", "axiom", "axioms", "constant",
+              "constants", "sorry", "admit", "sorryAx", "initialize",
+              "builtin_initialize", "elab", "elab_rules", "syntax",
+              "syntax_rules", "declare_syntax_cat", "macro", "macro_rules",
+              "native_decide", "set_option", "include_str", "include_bytes",
+              "implemented_by", "run_tac", "run_cmd", "attribute", "deriving",
+              "compile_inductive", "init_quot", "docs_to_verso", "add_decl_doc",
+              "register_tactic_tag", "tactic_extension", "recommended_spelling",
+              "gen_injective_theorems", "notation", "infix", "infixl", "infixr",
+              "prefix", "postfix", "mixfix", "meta", "partial", "coinductive",
+              "instance", "unsafe", "extern", "foreign",
+          })
+
+          def name_parts(value: str) -> tuple[str, ...]:
+              rooted = value.removeprefix("_root_.")
+              segments = re.findall(r"«[^»]*»|[^.]+", rooted)
+              return tuple(part.removeprefix("«").removesuffix("»") for part in segments)
+
+          def tokens(text: str) -> tuple[Token, ...]:
+              result: list[Token] = []
+              index = 0
+              line = 1
+              column = 1
+              depth = 0
+              line_start = True
+              block_depth = 0
+              while index < len(text):
+                  char = text[index]
+                  pair = text[index:index + 2]
+                  if block_depth:
+                      if pair == "/-":
+                          block_depth += 1; index += 2; column += 2
+                      elif pair == "-/":
+                          block_depth -= 1; index += 2; column += 2
+                      elif char == "\n":
+                          index += 1; line += 1; column = 1; line_start = True
+                      else:
+                          index += 1; column += 1
+                      continue
+                  if pair == "/-":
+                      block_depth = 1; index += 2; column += 2; continue
+                  if pair == "--":
+                      newline = text.find("\n", index + 2)
+                      index = len(text) if newline < 0 else newline
+                      continue
+                  if char in {'"', "'"}:
+                      quote = char; index += 1; column += 1
+                      while index < len(text):
+                          current = text[index]
+                          if current == "\\":
+                              index += 2; column += 2
+                          elif current == quote:
+                              index += 1; column += 1; break
+                          elif current == "\n":
+                              index += 1; line += 1; column = 1
+                          else:
+                              index += 1; column += 1
+                      continue
+                  if char == "\n":
+                      index += 1; line += 1; column = 1; line_start = True; continue
+                  if char.isspace():
+                      index += 1; column += 1; continue
+                  start_column = column
+                  start_line = line
+                  at_start = line_start
+                  if char.isalpha() or char == "_" or ord(char) > 127:
+                      end = index + 1
+                      while end < len(text) and (
+                          text[end].isalnum() or text[end] in "_'." or ord(text[end]) > 127
+                      ):
+                          end += 1
+                      value = text[index:end]
+                      result.append(Token(value, start_line, start_column, depth, at_start))
+                      column += end - index; index = end; line_start = False; continue
+                  if char in "([{":
+                      result.append(Token(char, start_line, start_column, depth, at_start)); depth += 1
+                  elif char in ")]}" and depth:
+                      depth -= 1; result.append(Token(char, start_line, start_column, depth, at_start))
+                  else:
+                      result.append(Token(char, start_line, start_column, depth, at_start))
+                  index += 1; column += 1; line_start = False
+              return tuple(result)
+
+          text = Path("dist/Main.lean").read_text(encoding="utf-8")
+          found: list[str] = []
+          lean_tokens = tokens(text)
+          if len(lean_tokens) > 200_000:
+              found.append("token limit")
+          if lean_tokens and max(token.depth for token in lean_tokens) > 4096:
+              found.append("delimiter depth")
+          if any(len(line) > 100_000 for line in text.splitlines()):
+              found.append("line length")
+          if any(unicodedata.category(char) in {"Cf", "Cs", "Co", "Cn"} for char in text):
+              found.append("forbidden Unicode")
+          for token in lean_tokens:
+              bad = next((part for part in name_parts(token.value) if part in prohibited), None)
+              if bad is not None:
+                  found.append(f"{bad} at {token.line}:{token.column}")
+          if "Green54.green_54" in text:
+              found.append("source declaration dependency")
+          if not re.search(r"(?m)^theorem target\s*:", text):
+              found.append("missing theorem target")
+          if found:
+              raise SystemExit("static policy failure: " + "; ".join(dict.fromkeys(found)))
+          print(f"static policy passed: {len(lean_tokens)} tokens, {len(text.encode())} bytes")
+          PY
+
+      - name: Compile the exact wrapped submission and audit axioms
         run: |
           mkdir -p .lake/build/lib/lean
-          lake env lean \
-            -o .lake/build/lib/lean/TaskSupport.olean \
-            TaskSupport.lean
-          lake env lean dist/Green54_counterexample_core.lean
-          lake env lean dist/Green54_counterexample_submission.lean
-          cp dist/Green54_counterexample_submission.lean dist/Green54_counterexample_audit.lean
-          printf '\n#print axioms Bounty.target\n' >> dist/Green54_counterexample_audit.lean
-          lake env lean dist/Green54_counterexample_audit.lean
-          if grep -nE '(^|[^[:alnum:]_])(sorry|admit)([^[:alnum:]_]|$)' \
-              dist/Green54_counterexample_submission.lean; then
-            echo "Forbidden placeholder found in submission"
+          lake env lean -o .lake/build/lib/lean/TaskSupport.olean TaskSupport.lean
+          lake env lean dist/Solution.lean
+          cp dist/Solution.lean dist/SolutionAudit.lean
+          printf '\n#print axioms Bounty.target\n' >> dist/SolutionAudit.lean
+          lake env lean dist/SolutionAudit.lean 2>&1 | tee dist/axioms.txt
+          if grep -Eq 'sorryAx|Green54\.green_54' dist/axioms.txt; then
+            echo "Axiom or forbidden source dependency audit failed"
             exit 1
           fi
+          sha256sum dist/Main.lean dist/Solution.lean > dist/SHA256SUMS.txt
 
-      - name: Upload submission artifact
+      - name: Upload submission-ready files
         uses: actions/upload-artifact@v4
         with:
-          name: Green54-counterexample-submission
-          path: dist/Green54_counterexample_submission.lean
+          name: Green54-submission-ready
+          path: |
+            dist/Main.lean
+            dist/Solution.lean
+            dist/axioms.txt
+            dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
