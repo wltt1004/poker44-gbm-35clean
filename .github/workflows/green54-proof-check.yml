@@ -40,6 +40,7 @@ jobs:
           fi
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Download Mathlib cache
+        if: steps.lean-cache.outputs.cache-hit != 'true'
         working-directory: green54-proof-check/vendor/formal-conjectures
         run: lake exe cache get
       - name: Check proof
