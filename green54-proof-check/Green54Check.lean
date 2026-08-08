@@ -63,8 +63,7 @@ lemma noZero_subset_iUnion_ratioCone : noZero ⊆ ⋃ n : ℕ, ratioCone n := by
 lemma μ7_noZero : μ7 noZero = 1 := by
   letI : NoAtoms (gaussianReal 0 1) := noAtoms_gaussianReal (by norm_num)
   have hcomp : gaussianReal 0 1 ({0}ᶜ : Set ℝ) = 1 := by
-    rw [measure_compl (MeasurableSet.singleton 0)]
-    simp
+    rw [measure_compl (MeasurableSet.singleton 0)] <;> simp
   rw [show noZero = univ.pi (fun _ : I7 => ({0}ᶜ : Set ℝ)) by
     ext x
     simp [noZero]]
@@ -73,7 +72,10 @@ lemma μ7_noZero : μ7 noZero = 1 := by
 
 lemma μ7_iUnion_ratioCone : μ7 (⋃ n : ℕ, ratioCone n) = 1 := by
   apply le_antisymm
-  · simpa using measure_mono (show (⋃ n : ℕ, ratioCone n) ⊆ (univ : Set (I7 → ℝ)) from subset_univ _)
+  · calc
+      μ7 (⋃ n : ℕ, ratioCone n) ≤ μ7 (univ : Set (I7 → ℝ)) :=
+        measure_mono (subset_univ _)
+      _ = 1 := measure_univ
   · rw [← μ7_noZero]
     exact measure_mono noZero_subset_iUnion_ratioCone
 
@@ -81,8 +83,11 @@ lemma exists_ratioCone_large : ∃ n : ℕ, (0.99 : ℝ≥0∞) < μ7 (ratioCone
   have hlim : Tendsto (fun n : ℕ => μ7 (ratioCone n)) atTop (𝓝 1) := by
     simpa [Function.comp_def, μ7_iUnion_ratioCone] using
       (tendsto_measure_iUnion_atTop (μ := μ7) ratioCone_mono)
+  have h99 : (0.99 : ℝ≥0∞) < 1 := by
+    change (99 / 100 : ℝ≥0∞) < 1
+    norm_num
   have hev : ∀ᶠ n : ℕ in atTop, (0.99 : ℝ≥0∞) < μ7 (ratioCone n) :=
-    hlim.eventually (Ioi_mem_nhds (by norm_num [OfScientific.ofScientific]))
+    hlim.eventually (Ioi_mem_nhds h99)
   rcases eventually_atTop.1 hev with ⟨n, hn⟩
   exact ⟨n, hn n le_rfl⟩
 
@@ -132,12 +137,12 @@ lemma gaussianReal_Iic_zero : gaussianReal 0 1 (Iic (0 : ℝ)) = (2 : ℝ≥0∞
     have hu : ({0} : Set ℝ) ∪ Ioi 0 = Ici 0 := by ext x; simp [le_iff_eq_or_lt]
     calc
       μ (Ici 0) = μ (({0} : Set ℝ) ∪ Ioi 0) := by rw [hu]
-      _ = μ ({0} : Set ℝ) + μ (Ioi 0) := measure_union (by simp [Set.disjoint_left]) measurableSet_Ioi
+      _ = μ ({0} : Set ℝ) + μ (Ioi 0) := measure_union (by simp) measurableSet_Ioi
       _ = μ (Ioi 0) := by simp
   have hsum : μ (Iic (0 : ℝ)) + μ (Ioi (0 : ℝ)) = 1 := by
     calc
       μ (Iic 0) + μ (Ioi 0) = μ (Iic 0 ∪ Ioi 0) :=
-        (measure_union (by simp [Set.disjoint_left]) measurableSet_Ioi).symm
+        (measure_union (by simp) measurableSet_Ioi).symm
       _ = 1 := by simp
   have htwo : (2 : ℝ≥0∞) * μ (Iic (0 : ℝ)) = 1 := by
     rw [two_mul]
@@ -156,7 +161,36 @@ lemma gaussianReal_Ici_zero : gaussianReal 0 1 (Ici (0 : ℝ)) = (2 : ℝ≥0∞
       gaussianReal 0 1 (Iic 0) = (Measure.map (fun x : ℝ => -x) μ) (Iic 0) := by simpa [μ, hmap]
       _ = μ ((fun x : ℝ => -x) ⁻¹' Iic 0) := Measure.map_apply_of_aemeasurable
         measurable_neg.aemeasurable measurableSet_Iic
-      _ = gaussianReal 0 1 (Ici 0) := by simp [μ]; congr 1; ext x; simp
+      _ = gaussianReal 0 1 (Ici 0) := by simp [μ]
   rw [← hsymm, gaussianReal_Iic_zero]
+
+lemma zero_not_mem_interior_ratioCone (n : ℕ) :
+    (0 : I7 → ℝ) ∉ interior (ratioCone n) := by
+  classical
+  intro h0
+  rcases (Metric.isOpen_iff.1 isOpen_interior) 0 h0 with ⟨ε, hε, hball⟩
+  let i0 : I7 := ⟨0, by simp⟩
+  let i1 : I7 := ⟨1, by simp⟩
+  let y : I7 → ℝ := Pi.single i0 (ε / 2)
+  have hyball : y ∈ Metric.ball (0 : I7 → ℝ) ε := by
+    rw [Metric.mem_ball, dist_zero_right, Pi.norm_single, Real.norm_eq_abs,
+      abs_of_pos (half_pos hε)]
+    linarith
+  have hyint : y ∈ interior (ratioCone n) := hball hyball
+  have hyD : y ∈ ratioCone n := interior_subset hyint
+  have hy1 : y i1 = 0 := by
+    simp [y, i0, i1]
+  have hyzero : y = 0 := ratioCone_eq_zero_of_coord_eq_zero n hyD hy1
+  have hy0 := congrFun hyzero i0
+  simp [y, i0] at hy0
+  linarith
+
+def orthant (x : I7 → ℝ) : Set (I7 → ℝ) :=
+  univ.pi fun i => if 0 < x i then Ici 0 else Iic 0
+
+lemma μ7_orthant (x : I7 → ℝ) :
+    μ7 (orthant x) = ((2 : ℝ≥0∞)⁻¹) ^ 7 := by
+  classical
+  simp [μ7, orthant, Measure.pi_pi, gaussianReal_Ici_zero, gaussianReal_Iic_zero]
 
 end Bounty
