@@ -1,0 +1,96 @@
+name: Green54 live Conjectures preflight
+
+on:
+  push:
+    branches:
+      - scratch/green54-proof-check
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TASK_ID: fc-379fc029-green54-green-54-88740a5fc0-counterexample-v1
+      TASK_SHA256: sha256:09e22ab166d7bc50b5db21029a278678ac7af7246d72dfa8f5aeb8f3e238d3f7
+      TEST_HOTKEY: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNQZ5HZjKX6kH
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Generate exact Main.lean and run local static scan
+        run: |
+          set -euo pipefail
+          python3 scripts/green54_prepare_submission.py | tee dist/local-policy.txt
+          test -s dist/Main.lean
+
+      - name: Install current official Conjectures miner CLI
+        run: |
+          set -euo pipefail
+          python3 -m venv .conjectures-cli
+          .conjectures-cli/bin/python -m pip install --upgrade pip
+          .conjectures-cli/bin/pip install 'git+https://github.com/conjectures-io/conjectures-miner.git@main'
+          .conjectures-cli/bin/conjectures --help >/dev/null
+
+      - name: Confirm live task and commitment
+        run: |
+          set -euo pipefail
+          .conjectures-cli/bin/conjectures --output json tasks sync | tee dist/tasks-sync.json
+          .conjectures-cli/bin/conjectures --output json tasks show "$TASK_ID" | tee dist/task-live.json
+          grep -F "$TASK_ID" dist/task-live.json
+          grep -F "$TASK_SHA256" dist/task-live.json
+
+      - name: Build canonical bundle with a disposable test hotkey
+        run: |
+          set -euo pipefail
+          .conjectures-cli/bin/conjectures --output json build \
+            --proof dist/Main.lean \
+            --task "$TASK_ID" \
+            --task-sha256 "$TASK_SHA256" \
+            --hotkey-ss58 "$TEST_HOTKEY" \
+            --output dist/preflight-submission.zip \
+            --plan dist/preflight-plan.json \
+            | tee dist/build.json
+
+      - name: Ask the live validator to preflight the exact proof bytes
+        run: |
+          set -euo pipefail
+          .conjectures-cli/bin/conjectures --output json check \
+            --plan dist/preflight-plan.json \
+            | tee dist/live-preflight.json
+          grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' dist/live-preflight.json
+
+      - name: Record proof digest and final report
+        run: |
+          set -euo pipefail
+          sha256sum dist/Main.lean | tee dist/Main.lean.sha256
+          {
+            echo 'TASK_ID='$TASK_ID
+            echo 'TASK_SHA256='$TASK_SHA256
+            cat dist/Main.lean.sha256
+            echo
+            echo 'LOCAL_POLICY:'
+            cat dist/local-policy.txt
+            echo
+            echo 'LIVE_PREFLIGHT:'
+            cat dist/live-preflight.json
+          } > dist/SUBMISSION_AUDIT.txt
+
+      - name: Upload validated Main.lean
+        uses: actions/upload-artifact@v4
+        with:
+          name: Green54-live-preflight-passed
+          path: |
+            dist/Main.lean
+            dist/Main.lean.sha256
+            dist/SUBMISSION_AUDIT.txt
+            dist/local-policy.txt
+            dist/task-live.json
+            dist/build.json
+            dist/live-preflight.json
+          if-no-files-found: error
+          retention-days: 30
