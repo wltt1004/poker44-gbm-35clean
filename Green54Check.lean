@@ -89,4 +89,112 @@ lemma gaussian_half_closed :
     simpa using hhalf_real
   exact ⟨hhalf, hsym.symm.trans hhalf⟩
 
+def halfLine (a : ℝ) : Set ℝ :=
+  if 0 ≤ a then Set.Ici 0 else Set.Iic 0
+
+lemma measurableSet_halfLine (a : ℝ) : MeasurableSet (halfLine a) := by
+  unfold halfLine
+  split_ifs <;> measurability
+
+lemma measure_halfLine (a : ℝ) : g (halfLine a) = (1 / 2 : ℝ≥0∞) := by
+  rcases gaussian_half_closed with ⟨hpos, hneg⟩
+  by_cases h : 0 ≤ a
+  · simpa [halfLine, h] using hpos
+  · simpa [halfLine, h] using hneg
+
+def orthant8 (x : Ω) : Set Ω :=
+  Set.pi (Finset.range 8) (fun i => halfLine (x i))
+
+def cone (x : Ω) : Set Ω :=
+  {y | ∀ i, 0 ≤ x i * y i}
+
+lemma measure_orthant8 (x : Ω) :
+    γ (orthant8 x) = (1 / 256 : ℝ≥0∞) := by
+  rw [Green54.gaussianMeasureInf, orthant8,
+    Measure.infinitePi_pi (fun _ : ℕ => g)
+      (fun i hi => measurableSet_halfLine (x i))]
+  norm_num [measure_halfLine]
+
+lemma cone_subset_orthant8 {x : Ω} (hx : x ∈ U) :
+    cone x ⊆ orthant8 x := by
+  intro y hy
+  change ∀ i, 0 ≤ x i * y i at hy
+  change ∀ i ∈ Finset.range 8, y i ∈ halfLine (x i)
+  intro i hi
+  by_cases hxi : 0 ≤ x i
+  · have hxpos : 0 < x i := lt_of_le_of_ne hxi (Ne.symm ((mem_U.mp hx) i))
+    simpa [halfLine, hxi] using nonneg_of_mul_nonneg_right (hy i) hxpos
+  · have hxneg : x i < 0 := lt_of_not_ge hxi
+    simpa [halfLine, hxi] using nonpos_of_mul_nonneg_right (hy i) hxneg
+
+lemma measure_cone_le {x : Ω} (hx : x ∈ U) :
+    γ (cone x) ≤ (1 / 256 : ℝ≥0∞) := by
+  calc
+    γ (cone x) ≤ γ (orthant8 x) := measure_mono (cone_subset_orthant8 hx)
+    _ = (1 / 256 : ℝ≥0∞) := measure_orthant8 x
+
+lemma neg_mem_U {x : Ω} (hx : x ∈ U) : -x ∈ U := by
+  rw [mem_U] at hx ⊢
+  intro n
+  simpa using neg_ne_zero.mpr (hx n)
+
+lemma measure_singleton_zero : γ ({0} : Set Ω) = 0 := by
+  letI : NoAtoms g := noAtoms_gaussianReal (μ := 0) (v := 1) (by norm_num)
+  rw [Green54.gaussianMeasureInf, Measure.infinitePi_singleton]
+  simp
+
+def scalarHull (B : Set Ω) : Set Ω :=
+  Metric.closedBall (0 : ℝ) 1 • B
+
+lemma subset_scalarHull (B : Set Ω) : B ⊆ scalarHull B := by
+  intro x hx
+  have h1 : (1 : ℝ) ∈ Metric.closedBall (0 : ℝ) 1 := by simp
+  simpa [scalarHull] using Set.smul_mem_smul h1 hx
+
+lemma isCompact_scalarHull {B : Set Ω} (hB : IsCompact B) :
+    IsCompact (scalarHull B) := by
+  exact isCompact_closedBall.smul_set hB
+
+lemma balanced_scalarHull (B : Set Ω) : Balanced ℝ (scalarHull B) := by
+  intro a ha
+  rintro z ⟨y, hy, rfl⟩
+  rcases hy with ⟨r, hr, x, hx, rfl⟩
+  have hrnorm : ‖r‖ ≤ 1 := by
+    simpa [Metric.mem_closedBall, dist_eq_norm] using hr
+  have harnorm : ‖a * r‖ ≤ 1 :=
+    (norm_mul_le a r).trans (mul_le_one₀ ha (norm_nonneg r) hrnorm)
+  have har : a * r ∈ Metric.closedBall (0 : ℝ) 1 := by
+    simpa [Metric.mem_closedBall, dist_eq_norm] using harnorm
+  refine ⟨a * r, har, x, hx, ?_⟩
+  simp [smul_smul]
+
+lemma scalarHull_subset_zero_union_U {B : Set Ω} (hB : B ⊆ U) :
+    scalarHull B ⊆ ({0} : Set Ω) ∪ U := by
+  rintro z ⟨r, hr, x, hx, rfl⟩
+  by_cases hr0 : r = 0
+  · left
+    simp [hr0]
+  · right
+    rw [mem_U]
+    intro n
+    change r * x n ≠ 0
+    exact mul_ne_zero hr0 ((mem_U.mp (hB hx)) n)
+
+lemma smul_subset_zero_union_U {S : Set Ω}
+    (hS : S ⊆ ({0} : Set Ω) ∪ U) (a : ℝ) :
+    a • S ⊆ ({0} : Set Ω) ∪ U := by
+  rintro z ⟨x, hx, rfl⟩
+  rcases hS hx with hx0 | hxU
+  · left
+    have hzero : x = 0 := by simpa using hx0
+    simp [hzero]
+  · by_cases ha : a = 0
+    · left
+      simp [ha]
+    · right
+      rw [mem_U]
+      intro n
+      change a * x n ≠ 0
+      exact mul_ne_zero ha ((mem_U.mp hxU) n)
+
 end Green54Counterexample
