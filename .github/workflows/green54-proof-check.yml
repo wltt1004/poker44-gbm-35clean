@@ -1,0 +1,27 @@
+name: Green54 Lean proof check
+
+on:
+  push:
+    branches:
+      - scratch/green54-proof-check
+    paths:
+      - 'green54-proof-check/**'
+      - '.github/workflows/green54-proof-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: green54-proof-check
+          build: true
+          test: false
+          lint: false
+          use-mathlib-cache: true
+          build-args: Green54Check
