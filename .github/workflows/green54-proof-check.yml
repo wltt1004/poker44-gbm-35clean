@@ -25,13 +25,13 @@ jobs:
           path: green54-proof-check/vendor/formal-conjectures
           fetch-depth: 1
       - name: Restore Lean and Mathlib environment
-        uses: actions/cache@v4
+        id: lean-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.elan
             green54-proof-check/vendor/formal-conjectures/.lake/packages
           key: green54-lean427-mathlib-a3a10db0-v1
-          save-always: true
       - name: Install Lean 4.27.0
         run: |
           if [ ! -x "$HOME/.elan/bin/lean" ]; then
@@ -45,3 +45,11 @@ jobs:
       - name: Check proof
         working-directory: green54-proof-check/vendor/formal-conjectures
         run: lake env lean ../../Green54Check.lean
+      - name: Save Lean and Mathlib environment
+        if: always() && steps.lean-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.elan
+            green54-proof-check/vendor/formal-conjectures/.lake/packages
+          key: green54-lean427-mathlib-a3a10db0-v1
