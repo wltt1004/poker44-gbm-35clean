@@ -31,6 +31,7 @@ jobs:
             ~/.elan
             green54-proof-check/vendor/formal-conjectures/.lake/packages
           key: green54-lean427-mathlib-a3a10db0-v1
+          save-always: true
       - name: Install Lean 4.27.0
         run: |
           if [ ! -x "$HOME/.elan/bin/lean" ]; then
