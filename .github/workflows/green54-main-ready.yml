@@ -71,6 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -c 'from pathlib import Path; p=Path("dist/WrappedMain.lean"); s=p.read_text(encoding="utf-8"); s=s.replace("import FormalConjectures.GreensOpenProblems.«54»\n\n", "import FormalConjectures.GreensOpenProblems.«54»\n\nopen MeasureTheory ProbabilityTheory\nopen scoped Pointwise ENNReal NNReal Topology\n\n"); s=s.replace("$_source:str", "$source:str"); p.write_text(s, encoding="utf-8")'
           lake env lean dist/WrappedMain.lean 2>&1 | tee dist/LEAN_AUDIT.txt
           if grep -q sorryAx dist/LEAN_AUDIT.txt; then
             echo "Unexpected sorryAx dependency"
