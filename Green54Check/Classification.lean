@@ -1,5 +1,7 @@
 import Green54Check
 
+/-! A convex set contained in `{0} ∪ U` lies in two opposite sign cones. -/
+
 open MeasureTheory ProbabilityTheory
 open scoped Pointwise ENNReal NNReal Topology
 
@@ -58,7 +60,7 @@ lemma convex_subset_two_cones {C : Set Ω} (hconv : Convex ℝ C)
         field_simp [hden]
         ring
       have hwC : r • x + s • y ∈ C :=
-        hconv hxC hyC r s hrs.1.le hrs.2.le hrsum
+        hconv hxC hyC hrs.1.le hrs.2.le hrsum
       have hwn : (r • x + s • y) n = 0 := by
         change r * x n + s * y n = 0
         exact hcancel
