@@ -18,28 +18,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Confirm the counterexample task is currently published
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import urllib.request
-
-          task_id = "fc-379fc029-green54-green-54-88740a5fc0-counterexample-v1"
-          try:
-              with urllib.request.urlopen("https://conjectures.io/v1/tasks", timeout=30) as response:
-                  payload = json.load(response)
-          except Exception as exc:
-              print(f"Live task endpoint unavailable during CI: {exc}")
-          else:
-              tasks = payload.get("tasks", payload if isinstance(payload, list) else [])
-              ids = {item.get("task_id") for item in tasks if isinstance(item, dict)}
-              if task_id not in ids:
-                  raise SystemExit(f"Counterexample task is not in the current live allowlist: {task_id}")
-              print(f"Live task confirmed: {task_id}")
-          PY
-
       - name: Restore Lean caches
         id: lean-cache
         uses: actions/cache@v4
@@ -74,7 +52,7 @@ jobs:
         if: steps.lean-cache.outputs.cache-hit != 'true'
         run: lake exe cache get
 
-      - name: Recompile the modular proof
+      - name: Recompile modular source proof
         shell: bash
         run: |
           set -euo pipefail
@@ -86,299 +64,26 @@ jobs:
           lake env lean Green54Check/Arithmetic.lean
           lake env lean Green54Check/Final.lean
 
-      - name: Generate policy-compliant Main.lean
+      - name: Generate and statically scan submission Main.lean
+        run: python3 scripts/green54_prepare_submission.py
+
+      - name: Compile exact Main under task-style trusted wrapper
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          def without_first_import_and_audit(path: str) -> str:
-              lines = Path(path).read_text(encoding="utf-8").splitlines()
-              removed_import = False
-              output = []
-              for line in lines:
-                  if not removed_import and line.startswith("import "):
-                      removed_import = True
-                      continue
-                  if line.strip().startswith("#print axioms"):
-                      continue
-                  output.append(line)
-              return "\n".join(output).strip()
-
-          root = Path("Green54Check.lean").read_text(encoding="utf-8").strip()
-          classification = without_first_import_and_audit("Green54Check/Classification.lean")
-          final = without_first_import_and_audit("Green54Check/Final.lean")
-          source = "\n\n".join((root, classification, final))
-
-          kept = []
-          for line in source.splitlines():
-              stripped = line.strip()
-              if stripped.startswith("import "):
-                  continue
-              if stripped == "namespace Green54Counterexample":
-                  continue
-              if stripped == "end Green54Counterexample":
-                  continue
-              if stripped.startswith('local notation "γ"'):
-                  continue
-              if stripped.startswith('local notation "g"'):
-                  continue
-              if stripped.startswith("#print axioms"):
-                  continue
-              kept.append(line)
-
-          text = "\n".join(kept)
-          text = text.replace("/-!", "/-")
-          text = text.replace("Ω", "Omega")
-          text = text.replace("γ", "Green54.gaussianMeasureInf")
-          text = re.sub(r"(?<![\\w.])g(?![\\w])", "(gaussianReal 0 1)", text)
-          text = text.rstrip() + '''
-
-/- Exact counterexample-mode target required by the live task. -/
-theorem target : ¬ (fcTypeOfName% "Green54.green_54") := by
-  exact green54_counterexample
-'''
-          Path("dist/Main.lean").write_text(text, encoding="utf-8")
-          print(f"Generated dist/Main.lean ({len(text.encode('utf-8'))} bytes)")
-          PY
-
-      - name: Run the validator's static-token policy
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from dataclasses import dataclass
-          from pathlib import Path
-          import re
-          import unicodedata
-
-          @dataclass(frozen=True)
-          class Token:
-              value: str
-              line: int
-              column: int
-              depth: int
-              line_start: bool
-
-          TOP_LEVEL_PROHIBITED = frozenset({
-              "import", "prelude", "module", "axiom", "axioms", "unsafe",
-              "extern", "foreign", "initialize", "elab", "syntax", "macro",
-              "set_option", "run_tac",
-          })
-          ANYWHERE_PROHIBITED = frozenset({
-              "import", "prelude", "module", "axiom", "axioms", "constant",
-              "constants", "sorry", "admit", "sorryAx", "initialize",
-              "builtin_initialize", "elab", "elab_rules", "syntax",
-              "syntax_rules", "declare_syntax_cat", "macro", "macro_rules",
-              "native_decide", "set_option", "include_str", "include_bytes",
-              "implemented_by", "run_tac", "run_cmd", "attribute", "deriving",
-              "compile_inductive", "init_quot", "docs_to_verso", "add_decl_doc",
-              "register_tactic_tag", "tactic_extension", "recommended_spelling",
-              "gen_injective_theorems", "notation", "infix", "infixl", "infixr",
-              "prefix", "postfix", "mixfix", "meta", "partial", "coinductive",
-              "instance", "unsafe", "extern", "foreign",
-          })
-
-          def lean_name_parts(value: str):
-              rooted = value.removeprefix("_root_.")
-              segments = re.findall(r"«[^»]*»|[^.]+", rooted)
-              return tuple(part.removeprefix("«").removesuffix("»") for part in segments)
-
-          def lean_tokens(text: str):
-              tokens = []
-              index = 0
-              line = 1
-              column = 1
-              depth = 0
-              line_start = True
-              block_depth = 0
-              length = len(text)
-              while index < length:
-                  char = text[index]
-                  pair = text[index:index + 2]
-                  if block_depth:
-                      if pair == "/-":
-                          block_depth += 1; index += 2; column += 2
-                      elif pair == "-/":
-                          block_depth -= 1; index += 2; column += 2
-                      elif char == "\n":
-                          index += 1; line += 1; column = 1; line_start = True
-                      else:
-                          index += 1; column += 1
-                      continue
-                  if pair == "/-":
-                      block_depth = 1; index += 2; column += 2; continue
-                  if pair == "--":
-                      newline = text.find("\n", index + 2)
-                      index = length if newline < 0 else newline
-                      continue
-                  if char in {'"', "'"}:
-                      if char == '"' and index > 0 and text[index - 1] == "!":
-                          tokens.append(Token("__interpolated_string__", line, column, depth, line_start))
-                      quote = char; index += 1; column += 1
-                      while index < length:
-                          current = text[index]
-                          if current == "\\":
-                              index += 2; column += 2
-                          elif current == quote:
-                              index += 1; column += 1; break
-                          elif current == "\n":
-                              index += 1; line += 1; column = 1
-                          else:
-                              index += 1; column += 1
-                      continue
-                  if char == "\n":
-                      index += 1; line += 1; column = 1; line_start = True; continue
-                  if char.isspace():
-                      index += 1; column += 1; continue
-                  start_column = column; start_line = line; at_start = line_start
-                  if char.isalpha() or char == "_" or ord(char) > 127:
-                      end = index + 1
-                      while end < length and (
-                          text[end].isalnum() or text[end] in "_'." or ord(text[end]) > 127
-                      ):
-                          end += 1
-                      value = text[index:end]
-                      tokens.append(Token(value, start_line, start_column, depth, at_start))
-                      column += end - index; index = end; line_start = False; continue
-                  if char in "([{":
-                      tokens.append(Token(char, start_line, start_column, depth, at_start)); depth += 1
-                  elif char in ")]}" and depth:
-                      depth -= 1; tokens.append(Token(char, start_line, start_column, depth, at_start))
-                  else:
-                      tokens.append(Token(char, start_line, start_column, depth, at_start))
-                  index += 1; column += 1; line_start = False
-              return tuple(tokens)
-
-          text = Path("dist/Main.lean").read_text(encoding="utf-8")
-          tokens = lean_tokens(text)
-          violations = []
-          if len(tokens) > 200_000:
-              violations.append("submission exceeds the 200000-token policy limit")
-          if tokens and max(token.depth for token in tokens) > 4096:
-              violations.append("submission exceeds the delimiter nesting limit")
-          if any(len(line) > 100_000 for line in text.splitlines()):
-              violations.append("submission exceeds the line-length limit")
-          forbidden_unicode = next((
-              (index, char) for index, char in enumerate(text)
-              if unicodedata.category(char) in {"Cf", "Cs", "Co", "Cn"}
-          ), None)
-          if forbidden_unicode:
-              violations.append(f"forbidden Unicode at character {forbidden_unicode[0]}")
-
-          for index, token in enumerate(tokens):
-              if token.value == "__interpolated_string__":
-                  violations.append(f"interpolated string at {token.line}:{token.column}")
-              prohibited = next((
-                  name for name in lean_name_parts(token.value)
-                  if name in ANYWHERE_PROHIBITED
-              ), None)
-              if prohibited:
-                  violations.append(f"{prohibited} is prohibited at {token.line}:{token.column}")
-              if token.depth == 0 and token.line_start and token.value in TOP_LEVEL_PROHIBITED:
-                  violations.append(f"top-level {token.value} at {token.line}:{token.column}")
-              next_value = tokens[index + 1].value if index + 1 < len(tokens) else ""
-              if token.value == "@" and next_value == "[":
-                  violations.append(f"declaration attribute at {token.line}:{token.column}")
-              if token.depth == 0 and token.value == "#" and next_value != "[":
-                  violations.append(f"top-level hash command at {token.line}:{token.column}")
-
-          target_start = next((
-              index for index in range(len(tokens) - 1)
-              if tokens[index].value in {"theorem", "lemma"}
-              and tokens[index + 1].value == "target"
-          ), -1)
-          target_assign = next((
-              index for index in range(max(target_start, 0), len(tokens) - 1)
-              if tokens[index].value == ":" and tokens[index + 1].value == "="
-          ), -1)
-          dependency_parts = lean_name_parts("Green54.green_54")
-          dependency_short = dependency_parts[-1]
-          references = tuple(
-              index for index, token in enumerate(tokens)
-              if lean_name_parts(token.value) == dependency_parts
-              or dependency_short in lean_name_parts(token.value)
-          )
-          if any(not (target_start <= index < target_assign) for index in references):
-              violations.append("source declaration dependency is prohibited: Green54.green_54")
-
-          if violations:
-              for violation in dict.fromkeys(violations):
-                  print(violation)
-              raise SystemExit(1)
-          print(f"Static policy admitted: {len(tokens)} Lean tokens, no violations")
-          PY
-
-      - name: Compile the exact Main.lean under a trusted task-style wrapper
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          header = r'''import FormalConjectures.GreensOpenProblems.«54»
-
-syntax (name := green54FcTypeTest) "fcTypeOfName% " str : term
-macro_rules
-  | `(fcTypeOfName% $_source:str) =>
-      `(True ↔
-        ∀ (K : Set (ℕ → ℝ)),
-          IsCompact K →
-            Balanced ℝ K →
-              (0.99 : ℝ≥0∞) ≤ Green54.gaussianMeasureInf K →
-                ∃ C : Set (ℕ → ℝ),
-                  IsCompact C ∧
-                    Convex ℝ C ∧
-                      C ⊆ (10 : ℝ) • K ∧
-                        (1e-2 : ℝ≥0∞) ≤ Green54.gaussianMeasureInf C)
-
-namespace Bounty
-'''
-          footer = '''
-
-#print axioms target
-
-end Bounty
-'''
-          main = Path("dist/Main.lean").read_text(encoding="utf-8")
-          Path("dist/WrappedMain.lean").write_text(header + main + footer, encoding="utf-8")
-          PY
           lake env lean dist/WrappedMain.lean 2>&1 | tee dist/LEAN_AUDIT.txt
-          if grep -q 'sorryAx' dist/LEAN_AUDIT.txt; then
+          if grep -q sorryAx dist/LEAN_AUDIT.txt; then
             echo "Unexpected sorryAx dependency"
             exit 1
           fi
 
-      - name: Record checksums and package
+      - name: Record checksum and package
         shell: bash
         run: |
           set -euo pipefail
-          cat > dist/README.txt <<'EOF'
-          Green54 counterexample submission
-          =================================
-
-          Submit Main.lean with the counterexample task:
-
-            fc-379fc029-green54-green-54-88740a5fc0-counterexample-v1
-
-          This file contains no imports because the Conjectures CLI inserts it
-          between the task's trusted SolutionHeader and SolutionFooter.
-
-          Before paying, run:
-
-            conjectures tasks sync
-            conjectures tasks challenge green54 --dir green54-counterexample
-            conjectures build --proof Main.lean --task fc-379fc029-green54-green-54-88740a5fc0-counterexample-v1
-            conjectures verify
-            conjectures check
-
-          Only pay after both verify and check succeed on your machine.
-          EOF
           sha256sum dist/Main.lean > dist/SHA256SUMS.txt
-          (cd dist && zip -q Green54-submission-ready.zip Main.lean README.txt SHA256SUMS.txt LEAN_AUDIT.txt)
+          cd dist
+          zip -q Green54-submission-ready.zip Main.lean README.txt SHA256SUMS.txt LEAN_AUDIT.txt
 
       - name: Upload submission-ready artifact
         uses: actions/upload-artifact@v4
