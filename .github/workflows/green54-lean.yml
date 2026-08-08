@@ -47,6 +47,9 @@ jobs:
           lake env lean \
             -o .lake/build/lib/lean/Green54Check/Classification.olean \
             Green54Check/Classification.lean
+          if [ -f Green54Check/Arithmetic.lean ]; then
+            lake env lean Green54Check/Arithmetic.lean
+          fi
           if [ -f Green54Check/Final.lean ]; then
             lake env lean Green54Check/Final.lean
           fi
