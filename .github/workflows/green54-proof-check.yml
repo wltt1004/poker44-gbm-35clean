@@ -17,6 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout pinned formal-conjectures
+        uses: actions/checkout@v4
+        with:
+          repository: google-deepmind/formal-conjectures
+          ref: 379fc0298dc146df549e7061c3ede0353a5bb51f
+          path: green54-proof-check/vendor/formal-conjectures
+          fetch-depth: 1
       - name: Install Lean 4.27.0
         run: |
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
