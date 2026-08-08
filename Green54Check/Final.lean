@@ -25,6 +25,7 @@ theorem green54_counterexample :
     norm_num
   have h99 : (0.99 : ℝ≥0∞) < γ U := by
     rw [measure_U]
+    change (99 / 100 : ℝ≥0∞) < 1
     norm_num
   obtain ⟨B, hBU, hBcompact, hBmeasure⟩ :=
     measurableSet_U.exists_lt_isCompact_of_ne_top hUtop h99
@@ -53,8 +54,12 @@ theorem green54_counterexample :
     have hm : γ C ≤ γ ({0} : Set Ω) := measure_mono hsub
     rw [measure_singleton_zero] at hm
     have hm0 : γ C = 0 := bot_unique hm
-    rw [hm0] at hCmeasure
-    norm_num at hCmeasure
+    have hpos : (0 : ℝ≥0∞) < (1e-2 : ℝ≥0∞) := by
+      change (0 : ℝ≥0∞) < 1 / 100
+      positivity
+    have hpositiveC : (0 : ℝ≥0∞) < γ C := hpos.trans_le hCmeasure
+    rw [hm0] at hpositiveC
+    exact (lt_irrefl 0 hpositiveC)
   obtain ⟨x, hxC, hx0⟩ := hx
   have hxU : x ∈ U := by
     rcases hCshape hxC with hxzero | hxU
@@ -66,16 +71,20 @@ theorem green54_counterexample :
   have hbound : γ C ≤ (1 / 128 : ℝ≥0∞) := by
     calc
       γ C ≤ γ (cone x ∪ cone (-x)) := measure_mono hCcones
-      _ ≤ γ (cone x) + γ (cone (-x)) := measure_union_le
+      _ ≤ γ (cone x) + γ (cone (-x)) := measure_union_le (cone x) (cone (-x))
       _ ≤ (1 / 256 : ℝ≥0∞) + (1 / 256 : ℝ≥0∞) :=
         add_le_add (measure_cone_le hxU) (measure_cone_le hnegU)
       _ = (1 / 128 : ℝ≥0∞) := by
         apply (ENNReal.toReal_eq_toReal_iff' (by norm_num) (by norm_num)).mp
-        norm_num
+        rw [ENNReal.toReal_add (by norm_num) (by norm_num)]
+        simp [ENNReal.toReal_div]
   have hbad : (1e-2 : ℝ≥0∞) ≤ (1 / 128 : ℝ≥0∞) :=
     hCmeasure.trans hbound
-  have hbadReal := ENNReal.toReal_mono (by norm_num : (1 / 128 : ℝ≥0∞) ≠ ⊤) hbad
-  norm_num at hbadReal
+  have hlt : (1 / 128 : ℝ≥0∞) < (1e-2 : ℝ≥0∞) := by
+    change (1 / 128 : ℝ≥0∞) < 1 / 100
+    apply (ENNReal.toReal_lt_toReal (by norm_num) (by norm_num)).mp
+    simp [ENNReal.toReal_div]
+  exact (not_le_of_gt hlt) hbad
 
 #print axioms green54_counterexample
 
