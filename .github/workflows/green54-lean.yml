@@ -14,6 +14,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - name: Restore Lean caches
         id: lean-cache
         uses: actions/cache@v4
@@ -23,33 +24,100 @@ jobs:
             .lake/packages
             .deps/formal-conjectures/.lake
           key: green54-lean-v427-fc379-mathlib-a3-v1
+
       - name: Install Lean
         run: |
           if [ ! -x "$HOME/.elan/bin/lean" ]; then
             curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           fi
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
       - name: Unpack exact Formal Conjectures revision
         run: |
           mkdir -p .deps/formal-conjectures
           curl -L --fail https://codeload.github.com/google-deepmind/formal-conjectures/tar.gz/379fc0298dc146df549e7061c3ede0353a5bb51f \
             | tar -xz --strip-components=1 -C .deps/formal-conjectures
+
       - name: Resolve dependencies
         run: lake update
+
       - name: Download Mathlib cache
         if: steps.lean-cache.outputs.cache-hit != 'true'
         run: lake exe cache get
-      - name: Compile Green54 development
-        continue-on-error: true
+
+      - name: Compile modular proof development
         run: |
           lake build Green54Check
           mkdir -p .lake/build/lib/lean/Green54Check
           lake env lean \
             -o .lake/build/lib/lean/Green54Check/Classification.olean \
             Green54Check/Classification.lean
-          if [ -f Green54Check/Arithmetic.lean ]; then
-            lake env lean Green54Check/Arithmetic.lean
+          lake env lean Green54Check/Arithmetic.lean
+          lake env lean Green54Check/Final.lean
+
+      - name: Generate single-file Conjectures submission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def without_first_import(path: str) -> str:
+              lines = Path(path).read_text(encoding="utf-8").splitlines()
+              removed = False
+              out = []
+              for line in lines:
+                  if not removed and line.startswith("import "):
+                      removed = True
+                      continue
+                  if line.strip().startswith("#print axioms"):
+                      continue
+                  out.append(line)
+              return "\n".join(out).strip()
+
+          root = Path("Green54Check.lean").read_text(encoding="utf-8").strip()
+          classification = without_first_import("Green54Check/Classification.lean")
+          final = without_first_import("Green54Check/Final.lean")
+          core = "\n\n".join([root, classification, final]).rstrip() + "\n"
+
+          dist = Path("dist")
+          dist.mkdir(exist_ok=True)
+          (dist / "Green54_counterexample_core.lean").write_text(core, encoding="utf-8")
+
+          first_import, rest = core.split("\n", 1)
+          submission = (
+              first_import
+              + "\nimport TaskSupport\n"
+              + rest.rstrip()
+              + "\n\nnamespace Bounty\n\n"
+              + "theorem target : ¬ (fcTypeOfName% \"Green54.green_54\") := by\n"
+              + "  exact Green54Counterexample.green54_counterexample\n\n"
+              + "end Bounty\n"
+          )
+          (dist / "Green54_counterexample_submission.lean").write_text(
+              submission, encoding="utf-8"
+          )
+          PY
+
+      - name: Compile exact single-file task submission and audit axioms
+        run: |
+          mkdir -p .lake/build/lib/lean
+          lake env lean \
+            -o .lake/build/lib/lean/TaskSupport.olean \
+            TaskSupport.lean
+          lake env lean dist/Green54_counterexample_core.lean
+          lake env lean dist/Green54_counterexample_submission.lean
+          cp dist/Green54_counterexample_submission.lean dist/Green54_counterexample_audit.lean
+          printf '\n#print axioms Bounty.target\n' >> dist/Green54_counterexample_audit.lean
+          lake env lean dist/Green54_counterexample_audit.lean
+          if grep -nE '(^|[^[:alnum:]_])(sorry|admit)([^[:alnum:]_]|$)' \
+              dist/Green54_counterexample_submission.lean; then
+            echo "Forbidden placeholder found in submission"
+            exit 1
           fi
-          if [ -f Green54Check/Final.lean ]; then
-            lake env lean Green54Check/Final.lean
-          fi
+
+      - name: Upload submission artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Green54-counterexample-submission
+          path: dist/Green54_counterexample_submission.lean
+          if-no-files-found: error
+          retention-days: 30
