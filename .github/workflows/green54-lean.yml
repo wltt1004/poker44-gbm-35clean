@@ -1,0 +1,19 @@
+name: Green54 Lean check
+
+on:
+  push:
+    branches:
+      - scratch/green54-proof-check
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          build: true
+          build-args: Green54Check
